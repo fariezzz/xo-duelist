@@ -150,7 +150,7 @@ export default function DashboardPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px' }}>
+      <div className="animate-fade-in" style={{ paddingTop: '104px', paddingBottom: '32px', paddingLeft: '24px', paddingRight: '24px', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
 
           {/* ── Hero Section ────────────────────────────── */}
