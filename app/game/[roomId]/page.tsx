@@ -178,7 +178,7 @@ export default function GameRoom() {
 
           {/* Timer */}
           <div style={{ maxWidth: '400px', margin: '0 auto 20px' }}>
-            <Timer seconds={15} onExpire={onExpire} keySeed={turnTimerKey} run={room.status === 'ongoing'} />
+            <Timer key={turnTimerKey} seconds={15} onExpire={onExpire} run={room.status === 'ongoing'} />
           </div>
 
           {/* Board */}

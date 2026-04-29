@@ -42,7 +42,7 @@ export default function MatchmakingPage() {
     };
 
     const tryMatch = async () => {
-      const me = await supabaseClient.from('profiles').select('*').eq('id', meId).single();
+      const me = await supabaseClient.from('profiles').select('elo_rating').eq('id', meId).single();
       if (!me.data) return;
       const { data: opp } = await supabaseClient
         .from('matchmaking_queue')

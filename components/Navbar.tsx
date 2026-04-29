@@ -1,28 +1,97 @@
 "use client";
 import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabaseClient } from '../lib/supabase';
 import TierBadge from './TierBadge';
+import { clearCachedProfile, getCachedProfile, setCachedProfile } from '../lib/profileCache';
 
 export default function Navbar() {
+  const router = useRouter();
   const [elo, setElo] = useState<number | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const { data: sess } = await supabaseClient.auth.getSession();
-      if (!sess.session) return;
+    let cancelled = false;
+    let profileChannel: ReturnType<typeof supabaseClient.channel> | null = null;
+
+    async function fetchProfileElo(userId: string) {
       const { data } = await supabaseClient
         .from('profiles')
         .select('elo_rating')
-        .eq('id', sess.session.user.id)
+        .eq('id', userId)
         .maybeSingle();
-      if (data) setElo(data.elo_rating);
+
+      if (cancelled || typeof data?.elo_rating !== 'number') return;
+      setElo(data.elo_rating);
+      setCachedProfile(userId, data.elo_rating);
+    }
+
+    function mountProfileListener(userId: string) {
+      if (profileChannel) supabaseClient.removeChannel(profileChannel);
+      profileChannel = supabaseClient
+        .channel(`profile-elo-${userId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+          (payload: { new?: { elo_rating?: number } }) => {
+            const nextElo = payload.new?.elo_rating;
+            if (typeof nextElo !== 'number') return;
+            if (cancelled) return;
+            setElo(nextElo);
+            setCachedProfile(userId, nextElo);
+          }
+        )
+        .subscribe();
+    }
+
+    async function syncForUser(userId: string | null) {
+      setCurrentUserId(userId);
+      if (!userId) {
+        setElo(null);
+        if (profileChannel) supabaseClient.removeChannel(profileChannel);
+        profileChannel = null;
+        return;
+      }
+
+      const cached = getCachedProfile(userId);
+      if (cached) setElo(cached.elo);
+      await fetchProfileElo(userId);
+      if (cancelled) return;
+      mountProfileListener(userId);
+    }
+
+    (async () => {
+      const { data } = await supabaseClient.auth.getSession();
+      const userId = data.session?.user.id ?? null;
+      await syncForUser(userId);
     })();
+
+    const auth = supabaseClient.auth.onAuthStateChange((event, session) => {
+      // Handle stale/expired refresh tokens gracefully
+      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+        setElo(null);
+        if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+          window.location.href = '/';
+        }
+        return;
+      }
+      void syncForUser(session?.user.id ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      auth.data.subscription.unsubscribe();
+      if (profileChannel) supabaseClient.removeChannel(profileChannel);
+    };
   }, []);
 
   async function signOut() {
+    if (currentUserId) clearCachedProfile(currentUserId);
+    else clearCachedProfile();
+    setElo(null);
     await supabaseClient.auth.signOut();
-    window.location.href = '/';
+    router.replace('/');
   }
 
   return (
@@ -34,10 +103,10 @@ export default function Navbar() {
         right: 0,
         zIndex: 50,
         background: 'rgba(10, 15, 30, 0.8)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-        height: '72px',
+        height: 'var(--navbar-height)',
       }}
     >
       <div

@@ -103,7 +103,7 @@ export default function LobbyRoomPage() {
   if (error && !room) return (
     <>
       <Navbar />
-      <div className="page-container" style={{ padding: '32px' }}>
+      <div className="page-container" style={{ padding: '32px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div className="card" style={{ maxWidth: '480px', margin: '0 auto', borderColor: 'rgba(239,68,68,0.3)' }}>
           <p style={{ color: '#ef4444' }}>{error}</p>
         </div>
@@ -122,7 +122,7 @@ export default function LobbyRoomPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px' }}>
+      <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div style={{ maxWidth: '600px', margin: '0 auto' }}>
           <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳ Waiting Room</h1>
           <p style={{ color: 'var(--text-muted)', marginBottom: '28px', fontSize: '0.95rem' }}>

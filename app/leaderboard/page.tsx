@@ -13,7 +13,11 @@ export default function LeaderboardPage() {
     const load = async () => {
       const s = await supabaseClient.auth.getSession();
       if (!cancelled) setMeId(s.data.session?.user.id ?? null);
-      const { data } = await supabaseClient.from('profiles').select('*').order('elo_rating', { ascending: false }).limit(50);
+      const { data } = await supabaseClient
+        .from('profiles')
+        .select('id, username, elo_rating, wins, losses')
+        .order('elo_rating', { ascending: false })
+        .limit(50);
       if (!cancelled) setRows(data || []);
     };
     load();
@@ -29,7 +33,7 @@ export default function LeaderboardPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px' }}>
+      <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '24px' }}>🏅 Leaderboard</h1>
           <div className="card" style={{ padding: '8px 0', overflow: 'auto' }}>

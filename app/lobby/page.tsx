@@ -60,7 +60,7 @@ export default function LobbyPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px' }}>
+      <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div style={{ maxWidth: '700px', margin: '0 auto' }}>
           <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '8px' }}>🏠 Lobby Room</h1>
           <p style={{ color: 'var(--text-muted)', marginBottom: '28px', fontSize: '0.95rem' }}>

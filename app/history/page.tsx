@@ -15,7 +15,7 @@ export default function HistoryPage() {
       if (!uid) return;
       const { data } = await supabaseClient
         .from('match_history')
-        .select('*')
+        .select('id, player1_id, player2_id, winner_id, winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, played_at')
         .or(`player1_id.eq.${uid},player2_id.eq.${uid}`)
         .order('played_at', { ascending: false })
         .limit(20);
@@ -50,7 +50,7 @@ export default function HistoryPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px' }}>
+      <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '24px' }}>📜 Match History</h1>
           <div className="card" style={{ padding: '8px 0', overflow: 'auto' }}>

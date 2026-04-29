@@ -5,20 +5,15 @@ type Props = {
   seconds: number;
   onExpire?: () => void;
   run?: boolean;
-  keySeed?: string | number;
 };
 
-export default function Timer({ seconds, onExpire, run = true, keySeed }: Props) {
+export default function Timer({ seconds, onExpire, run = true }: Props) {
   const [time, setTime] = useState(seconds);
-
-  useEffect(() => {
-    setTime(seconds);
-  }, [seconds, keySeed]);
 
   useEffect(() => {
     if (!run) return;
     if (time <= 0) {
-      onExpire && onExpire();
+      if (onExpire) onExpire();
       return;
     }
     const t = setTimeout(() => setTime((s) => s - 1), 1000);

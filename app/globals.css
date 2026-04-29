@@ -2,6 +2,7 @@
 
 /* ── Design Tokens ────────────────────────────────────── */
 :root {
+  --navbar-height: 72px;
   --bg-base: #0a0f1e;
   --bg-layer-1: #0d1526;
   --bg-layer-2: #111827;
@@ -46,18 +47,17 @@ body {
 }
 
 /* ── Scrollbar ────────────────────────────────────────── */
+html,
+body,
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg-layer-1);
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.4);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 58, 237, 0.6);
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 /* ── Background Atmosphere ────────────────────────────── */
@@ -67,6 +67,7 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  contain: paint;
 }
 
 .atmosphere::before {
@@ -94,7 +95,7 @@ body {
 .orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120px);
+  filter: blur(96px);
   opacity: 0.5;
   animation: float 8s ease-in-out infinite;
 }
@@ -127,8 +128,8 @@ body {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--card-radius);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   padding: 24px;
   transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
 }
@@ -372,7 +373,41 @@ body {
   position: relative;
   z-index: 1;
   min-height: 100vh;
-  padding-top: 72px; /* navbar height */
+  padding-top: var(--navbar-height);
+}
+
+@media (max-width: 900px) {
+  .orb {
+    filter: blur(72px);
+    opacity: 0.38;
+    animation-duration: 12s;
+  }
+
+  .atmosphere::after {
+    background-size: 84px 84px;
+    opacity: 0.65;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .orb,
+  .animate-pulse-glow,
+  .animate-float,
+  .animate-shimmer,
+  .animate-fade-in,
+  .animate-spin-slow {
+    animation: none !important;
+  }
 }
 
 /* ── Stat Card Borders ────────────────────────────────── */

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React from 'react';
 
 type Props = {
   value: 'X' | 'O' | null;
@@ -9,9 +9,14 @@ type Props = {
 };
 
 export default function Cell({ value, onClick, highlight, disabled }: Props) {
-  const [hovered, setHovered] = useState(false);
-
   const size = 64;
+  const idleBorderColor = 'rgba(124, 58, 237, 0.4)';
+  const idleBackground = 'rgba(124, 58, 237, 0.06)';
+  const idleShadow = '0 0 15px rgba(124, 58, 237, 0.15)';
+
+  const winningBorderColor = 'rgba(16, 185, 129, 0.6)';
+  const winningBackground = 'rgba(16, 185, 129, 0.1)';
+  const winningShadow = '0 0 20px rgba(16, 185, 129, 0.3), 0 0 40px rgba(16, 185, 129, 0.1)';
 
   const baseStyle: React.CSSProperties = {
     width: size,
@@ -20,26 +25,20 @@ export default function Cell({ value, onClick, highlight, disabled }: Props) {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: '10px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    background: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: highlight ? winningBorderColor : idleBorderColor,
+    background: highlight ? winningBackground : idleBackground,
+    boxShadow: highlight ? winningShadow : idleShadow,
     cursor: disabled ? 'not-allowed' : 'pointer',
     transition: 'all 0.2s ease',
     position: 'relative',
     overflow: 'hidden',
+    opacity: disabled ? 0.85 : 1,
   };
-
-  // Hover glow
-  if (hovered && !disabled) {
-    baseStyle.borderColor = 'rgba(124, 58, 237, 0.4)';
-    baseStyle.background = 'rgba(124, 58, 237, 0.06)';
-    baseStyle.boxShadow = '0 0 15px rgba(124, 58, 237, 0.15)';
-  }
 
   // Winning highlight
   if (highlight) {
-    baseStyle.borderColor = 'rgba(16, 185, 129, 0.6)';
-    baseStyle.background = 'rgba(16, 185, 129, 0.1)';
-    baseStyle.boxShadow = '0 0 20px rgba(16, 185, 129, 0.3), 0 0 40px rgba(16, 185, 129, 0.1)';
     baseStyle.animation = 'pulse-glow 1.5s ease-in-out infinite';
   }
 
@@ -72,8 +71,6 @@ export default function Cell({ value, onClick, highlight, disabled }: Props) {
       style={baseStyle}
       onClick={onClick}
       disabled={disabled}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       {value === 'X' ? (
         <span style={xStyle}>X</span>

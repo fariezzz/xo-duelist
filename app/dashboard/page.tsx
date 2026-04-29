@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
         const { data: existingProfile, error: profileError } = await supabaseClient
           .from('profiles')
-          .select('*')
+          .select('id, username, elo_rating, wins, losses, draws')
           .eq('id', uid)
           .maybeSingle();
 
@@ -59,7 +59,7 @@ export default function DashboardPage() {
               },
               { onConflict: 'id' }
             )
-            .select('*')
+            .select('id, username, elo_rating, wins, losses, draws')
             .single();
 
           if (createError) throw createError;
@@ -80,8 +80,15 @@ export default function DashboardPage() {
           setRank({ position: count, total });
         }
       } catch (err: any) {
+        const msg = err?.message || 'Failed to load dashboard';
         console.error('Dashboard load failed:', err);
-        if (!cancelled) setError(err?.message || 'Failed to load dashboard');
+        // Expired/invalid session → redirect to login
+        if (msg.toLowerCase().includes('refresh token') || msg.toLowerCase().includes('not authenticated')) {
+          await supabaseClient.auth.signOut();
+          router.push('/');
+          return;
+        }
+        if (!cancelled) setError(msg);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -110,7 +117,7 @@ export default function DashboardPage() {
     return (
       <>
         <Navbar />
-        <div className="page-container" style={{ padding: '32px' }}>
+        <div className="page-container" style={{ padding: '32px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
           <div
             className="card"
             style={{
@@ -150,7 +157,7 @@ export default function DashboardPage() {
   return (
     <>
       <Navbar />
-      <div className="animate-fade-in" style={{ paddingTop: '104px', paddingBottom: '32px', paddingLeft: '24px', paddingRight: '24px', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <div className="animate-fade-in" style={{ paddingTop: 'calc(var(--navbar-height) + 32px)', paddingBottom: '32px', paddingLeft: '24px', paddingRight: '24px', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
 
           {/* ── Hero Section ────────────────────────────── */}
@@ -356,6 +363,13 @@ export default function DashboardPage() {
               style={{ width: '100%' }}
             >
               🏠 Lobby Room
+            </button>
+            <button
+              className="btn btn-lg btn-ghost"
+              onClick={() => router.push('/training')}
+              style={{ width: '100%', borderColor: 'rgba(16,185,129,0.3)', color: '#10b981' }}
+            >
+              🎯 Training Mode
             </button>
           </div>
 
