@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
         const { data: existingProfile, error: profileError } = await supabaseClient
           .from('profiles')
-          .select('id, username, elo_rating, wins, losses, draws')
+          .select('id, username, elo_rating, wins, losses, draws, avatar_url')
           .eq('id', uid)
           .maybeSingle();
 
@@ -59,7 +59,7 @@ export default function DashboardPage() {
               },
               { onConflict: 'id' }
             )
-            .select('id, username, elo_rating, wins, losses, draws')
+            .select('id, username, elo_rating, wins, losses, draws, avatar_url')
             .single();
 
           if (createError) throw createError;
@@ -179,17 +179,26 @@ export default function DashboardPage() {
                   width: '100%',
                   height: '100%',
                   borderRadius: '50%',
-                  background: 'var(--bg-base)',
+                  background: profile.avatar_url ? 'transparent' : 'var(--bg-base)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  overflow: 'hidden',
                   fontFamily: 'var(--font-heading)',
                   fontWeight: 700,
                   fontSize: '2rem',
                   color: 'var(--text-primary)',
                 }}
               >
-                {profile.username.charAt(0).toUpperCase()}
+                {profile.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={profile.username}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  profile.username.charAt(0).toUpperCase()
+                )}
               </div>
             </div>
 

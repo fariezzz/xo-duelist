@@ -1,35 +1,48 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 type Props = {
   seconds: number;
   onExpire?: () => void;
+  onWarning?: (secondsLeft: number) => void;
   run?: boolean;
 };
 
-export default function Timer({ seconds, onExpire, run = true }: Props) {
+export default function Timer({ seconds, onExpire, onWarning, run = true }: Props) {
   const [time, setTime] = useState(seconds);
+  const onExpireRef = useRef(onExpire);
+  const onWarningRef = useRef(onWarning);
+
+  // Keep refs fresh without causing effect re-fires
+  useEffect(() => { onExpireRef.current = onExpire; }, [onExpire]);
+  useEffect(() => { onWarningRef.current = onWarning; }, [onWarning]);
 
   useEffect(() => {
     if (!run) return;
     if (time <= 0) {
-      if (onExpire) onExpire();
+      onExpireRef.current?.();
       return;
     }
     const t = setTimeout(() => setTime((s) => s - 1), 1000);
     return () => clearTimeout(t);
-  }, [time, run, onExpire]);
+  }, [time, run]);
+
+  // Trigger warning when ≤ 5s
+  useEffect(() => {
+    if (run && time <= 5 && time > 0) {
+      onWarningRef.current?.(time);
+    }
+  }, [time, run]);
 
   const pct = Math.max(0, Math.min(100, Math.round((time / seconds) * 100)));
   const isLow = time <= 5;
 
-  // Gradient from violet → gold, turns red when low
   const barGradient = isLow
     ? 'linear-gradient(90deg, #ef4444, #dc2626)'
     : 'linear-gradient(90deg, #7c3aed, #a78bfa, #f59e0b)';
 
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ width: '100%' }} className={isLow ? 'animate-shake' : ''}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div
           style={{

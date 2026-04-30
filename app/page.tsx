@@ -1,19 +1,39 @@
 "use client";
-import React, { useState } from 'react';
-import { supabaseClient } from '../lib/supabase';
+import React, { useEffect, useState } from 'react';
+import { supabaseClient, setRememberMe } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
+import { useNotification } from '../hooks/useNotification';
 
 export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [rememberMe, setRemember] = useState(true);
   const router = useRouter();
+  const { showToast } = useNotification();
+
+  // Redirect to dashboard if already logged in
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabaseClient.auth.getSession();
+      if (data.session) {
+        router.replace('/dashboard');
+      } else {
+        setCheckingSession(false);
+      }
+    })();
+  }, [router]);
+
+  // Don't render the form while checking session
+  if (checkingSession) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setRememberMe(rememberMe);
 
     if (mode === 'register') {
       const { error } = await supabaseClient.auth.signUp({
@@ -22,14 +42,14 @@ export default function Home() {
         options: { data: { username } },
       });
       if (error) {
-        alert(error.message);
+        showToast({ type: 'error', title: 'Registration Failed', message: error.message });
         setLoading(false);
         return;
       }
     } else {
       const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (error) {
-        alert(error.message);
+        showToast({ type: 'error', title: 'Login Failed', message: error.message });
         setLoading(false);
         return;
       }
@@ -154,6 +174,56 @@ export default function Home() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+
+          {/* Remember Me */}
+          {mode === 'login' && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                cursor: 'pointer',
+                userSelect: 'none',
+                fontSize: '0.9rem',
+                color: 'var(--text-muted)',
+                padding: '4px 0',
+              }}
+            >
+              <div
+                onClick={() => setRemember(!rememberMe)}
+                style={{
+                  width: 38,
+                  height: 20,
+                  borderRadius: '10px',
+                  background: rememberMe
+                    ? 'linear-gradient(135deg, #7c3aed, #a78bfa)'
+                    : 'rgba(255,255,255,0.1)',
+                  position: 'relative',
+                  transition: 'background 0.25s ease',
+                  flexShrink: 0,
+                  boxShadow: rememberMe
+                    ? '0 0 12px rgba(124,58,237,0.3)'
+                    : 'none',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: rememberMe ? '20px' : '2px',
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: 'white',
+                    transition: 'left 0.25s ease',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  }}
+                />
+              </div>
+              <span>Remember me</span>
+            </label>
+          )}
+
           <button
             type="submit"
             className={`btn btn-lg ${mode === 'login' ? 'btn-primary' : 'btn-secondary'}`}

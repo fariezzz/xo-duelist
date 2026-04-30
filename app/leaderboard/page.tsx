@@ -15,7 +15,7 @@ export default function LeaderboardPage() {
       if (!cancelled) setMeId(s.data.session?.user.id ?? null);
       const { data } = await supabaseClient
         .from('profiles')
-        .select('id, username, elo_rating, wins, losses')
+        .select('id, username, elo_rating, wins, losses, avatar_url')
         .order('elo_rating', { ascending: false })
         .limit(50);
       if (!cancelled) setRows(data || []);
@@ -60,8 +60,12 @@ export default function LeaderboardPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: i < 3 ? 'linear-gradient(135deg,#7c3aed,#f59e0b)' : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-primary)', flexShrink: 0 }}>
-                            {r.username?.charAt(0).toUpperCase() || '?'}
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: r.avatar_url ? 'transparent' : (i < 3 ? 'linear-gradient(135deg,#7c3aed,#f59e0b)' : 'rgba(255,255,255,0.08)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-primary)', flexShrink: 0, overflow: 'hidden', border: i < 3 ? '2px solid rgba(124,58,237,0.3)' : 'none' }}>
+                            {r.avatar_url ? (
+                              <img src={r.avatar_url} alt={r.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              r.username?.charAt(0).toUpperCase() || '?'
+                            )}
                           </div>
                           <span style={{ fontWeight: isMe ? 700 : 500 }}>
                             {r.username}

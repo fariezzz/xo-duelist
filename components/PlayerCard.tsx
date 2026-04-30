@@ -7,9 +7,10 @@ type Props = {
   symbol?: 'X' | 'O';
   you?: boolean;
   active?: boolean;
+  avatarUrl?: string | null;
 };
 
-export default function PlayerCard({ username, elo, symbol, you, active }: Props) {
+export default function PlayerCard({ username, elo, symbol, you, active, avatarUrl }: Props) {
   const symbolColor = symbol === 'X' ? '#a78bfa' : '#fbbf24';
   const symbolGlow =
     symbol === 'X'
@@ -45,10 +46,11 @@ export default function PlayerCard({ username, elo, symbol, you, active }: Props
             width: '100%',
             height: '100%',
             borderRadius: '50%',
-            background: 'var(--bg-layer-1)',
+            background: avatarUrl ? 'transparent' : 'var(--bg-layer-1)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            overflow: 'hidden',
             fontFamily: 'var(--font-heading)',
             fontWeight: 700,
             fontSize: '1.1rem',
@@ -56,7 +58,11 @@ export default function PlayerCard({ username, elo, symbol, you, active }: Props
             textShadow: symbolGlow,
           }}
         >
-          {symbol || username.charAt(0).toUpperCase()}
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            symbol || username.charAt(0).toUpperCase()
+          )}
         </div>
       </div>
 

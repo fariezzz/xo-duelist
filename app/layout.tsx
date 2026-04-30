@@ -1,6 +1,9 @@
 import './globals.css';
+import '../styles/notifications.css';
 import React from 'react';
 import { Rajdhani } from 'next/font/google';
+import { NotificationProvider } from '../context/NotificationContext';
+import ToastContainer from '../components/notifications/ToastContainer';
 
 const rajdhani = Rajdhani({
   weight: ['500', '600', '700'],
@@ -25,8 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="orb orb-violet-sm" />
         </div>
 
-        {/* Page content */}
-        {children}
+        {/* App with notification system */}
+        <NotificationProvider>
+          {children}
+          <ToastContainer />
+        </NotificationProvider>
       </body>
     </html>
   );
