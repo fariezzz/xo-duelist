@@ -4,6 +4,7 @@ import React from 'react';
 import { Rajdhani } from 'next/font/google';
 import { NotificationProvider } from '../context/NotificationContext';
 import ToastContainer from '../components/notifications/ToastContainer';
+import BackgroundMusic from '../components/BackgroundMusic';
 
 const rajdhani = Rajdhani({
   weight: ['500', '600', '700'],
@@ -33,6 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <ToastContainer />
         </NotificationProvider>
+
+        {/* Global Persistent Audio */}
+        <BackgroundMusic />
       </body>
     </html>
   );

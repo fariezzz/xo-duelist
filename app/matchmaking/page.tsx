@@ -4,6 +4,7 @@ import { supabaseClient } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Navbar from '../../components/Navbar';
 import MatchFoundModal from '../../components/notifications/MatchFoundModal';
+import useSound from 'use-sound';
 
 export default function MatchmakingPage() {
   const router = useRouter();
@@ -14,6 +15,8 @@ export default function MatchmakingPage() {
   const matchingRef = useRef(false);
   const timeRef = useRef(0);
   const redirectedRef = useRef(false);
+
+  const [playMatchFound] = useSound('/sounds/match-found.wav', { volume: 0.7 });
 
   // Match found modal state
   const [matchFound, setMatchFound] = useState<{
@@ -235,6 +238,7 @@ export default function MatchmakingPage() {
               oppElo: oppP?.elo_rating ?? 1000,
               oppAvatarUrl: oppP?.avatar_url ?? null,
             });
+            playMatchFound();
           })();
         }
       })

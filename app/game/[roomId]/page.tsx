@@ -12,6 +12,7 @@ import ConnectionStatus from '../../../components/notifications/ConnectionStatus
 import RankUpOverlay from '../../../components/notifications/RankUpOverlay';
 import { useNotification } from '../../../hooks/useNotification';
 import { checkWinner4, isDraw } from '../../../lib/gameLogic';
+import useSound from 'use-sound';
 
 /* Tier helper — matches TierBadge logic */
 function getTierName(elo: number) {
@@ -62,6 +63,18 @@ export default function GameRoom() {
   } | null>(null);
   const [showResult, setShowResult] = useState(false);
 
+  /* Sounds */
+  const [playPlaceX] = useSound('/sounds/place-x.wav', { volume: 0.6 });
+  const [playPlaceO] = useSound('/sounds/place-o.wav', { volume: 0.6 });
+  const [playWin] = useSound('/sounds/win.wav', { volume: 0.8 });
+  const [playLose] = useSound('/sounds/lose.wav', { volume: 0.8 });
+
+  // Stable refs for sounds to use in callbacks
+  const soundsRef = useRef({ playPlaceX, playPlaceO, playWin, playLose });
+  useEffect(() => {
+    soundsRef.current = { playPlaceX, playPlaceO, playWin, playLose };
+  }, [playPlaceX, playPlaceO, playWin, playLose]);
+
   /* ── Init ──────────────────────────────────────── */
   useEffect(() => {
     (async () => {
@@ -108,9 +121,13 @@ export default function GameRoom() {
         setTurnTimerKey((k) => k + 1);
         timerWarningShown.current = false;
 
-        // Turn change banners
+        // Turn change banners & opponent move sound
         if (newRow.status === 'ongoing' && prevTurn !== newRow.current_turn) {
           if (newRow.current_turn === meId) {
+            // Opponent just moved, so play their sound
+            if (newRow.player1_id === meId) soundsRef.current.playPlaceO(); // Opponent is O
+            else soundsRef.current.playPlaceX(); // Opponent is X
+
             showBannerRef.current({ type: 'info', message: "Your Turn!", icon: '⚔️', pulse: true, duration: 2500 });
           } else {
             showBannerRef.current({ type: 'info', message: "Opponent's Turn", icon: '⏳', duration: 2000 });
@@ -139,6 +156,9 @@ export default function GameRoom() {
     const outcome: ResultOutcome = newRow.winner_id
       ? (newRow.winner_id === meId ? 'win' : 'lose')
       : 'draw';
+
+    if (outcome === 'win') soundsRef.current.playWin();
+    else if (outcome === 'lose') soundsRef.current.playLose();
 
     // Finalize (host only)
     if (meId && newRow.player1_id === meId) {
@@ -207,6 +227,9 @@ export default function GameRoom() {
     const newBoard = [...board];
     newBoard[i] = symbol;
     setBoard(newBoard);
+
+    if (symbol === 'X') playPlaceX();
+    else playPlaceO();
 
     const res = checkWinner4(newBoard as any);
     if (res.symbol) {
