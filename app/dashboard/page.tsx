@@ -243,6 +243,7 @@ export default function DashboardPage() {
 
           {/* ── Stats Row ───────────────────────────────── */}
           <div
+            className="stats-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(4, 1fr)',

@@ -18,7 +18,7 @@ function getTierName(elo: number) {
   if (elo >= 1400) return 'Diamond';
   if (elo >= 1200) return 'Platinum';
   if (elo >= 1000) return 'Gold';
-  if (elo >= 800)  return 'Silver';
+  if (elo >= 800) return 'Silver';
   return 'Bronze';
 }
 
@@ -128,7 +128,7 @@ export default function GameRoom() {
       });
 
     return () => { supabaseClient.removeChannel(channel); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, meId]);
 
   /* ── Handle game finished (fetch ELO data) ──── */
@@ -294,7 +294,7 @@ export default function GameRoom() {
 
           {/* Timer */}
           <div style={{ maxWidth: '400px', margin: '0 auto 20px' }}>
-            <Timer key={turnTimerKey} seconds={15} onExpire={onExpire} onWarning={onTimerWarning} run={room.status === 'ongoing'} />
+            <Timer key={turnTimerKey} seconds={30} onExpire={onExpire} onWarning={onTimerWarning} run={room.status === 'ongoing'} />
           </div>
 
           {/* Board */}

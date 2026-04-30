@@ -462,3 +462,27 @@ body,
   transform: rotate(-90deg);
   transform-origin: 50% 50%;
 }
+
+/* ── Responsive Mobile Classes ────────────────────────── */
+@media (max-width: 768px) {
+  .hidden-on-mobile {
+    display: none !important;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .nav-right-gap {
+    gap: 8px !important;
+  }
+
+  .nav-username {
+    display: none !important;
+  }
+
+  .mobile-logo-text {
+    font-size: 1.2rem !important;
+  }
+}

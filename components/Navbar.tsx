@@ -159,7 +159,7 @@ export default function Navbar() {
         style={{
           maxWidth: '1200px',
           margin: '0 auto',
-          padding: '0 24px',
+          padding: '0 16px',
           height: '100%',
           display: 'flex',
           alignItems: 'center',
@@ -173,23 +173,23 @@ export default function Navbar() {
             textDecoration: 'none',
             fontFamily: 'var(--font-heading)',
             fontWeight: 700,
-            fontSize: '1.5rem',
             letterSpacing: '0.04em',
             display: 'flex',
             alignItems: 'center',
             gap: '2px',
           }}
         >
-          <span style={{ color: '#7c3aed', textShadow: '0 0 20px rgba(124,58,237,0.4)' }}>X</span>
-          <span style={{ color: '#f59e0b', textShadow: '0 0 20px rgba(245,158,11,0.4)' }}>O</span>
-          <span style={{ color: 'var(--text-primary)', marginLeft: '6px' }}>Duelist</span>
+          <span className="mobile-logo-text" style={{ fontSize: '1.5rem', color: '#7c3aed', textShadow: '0 0 20px rgba(124,58,237,0.4)' }}>X</span>
+          <span className="mobile-logo-text" style={{ fontSize: '1.5rem', color: '#f59e0b', textShadow: '0 0 20px rgba(245,158,11,0.4)' }}>O</span>
+          <span className="mobile-logo-text hidden-on-mobile" style={{ fontSize: '1.5rem', color: 'var(--text-primary)', marginLeft: '6px' }}>Duelist</span>
         </Link>
 
         {/* Right side */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div className="nav-right-gap" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           {/* Nav links */}
           <Link
             href="/leaderboard"
+            className="hidden-on-mobile"
             style={navLinkStyle}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
             onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
@@ -198,6 +198,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/history"
+            className="hidden-on-mobile"
             style={navLinkStyle}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
             onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
@@ -271,6 +272,7 @@ export default function Navbar() {
                   )}
                 </div>
                 <span
+                  className="nav-username"
                   style={{
                     fontFamily: 'var(--font-heading)',
                     fontWeight: 600,
