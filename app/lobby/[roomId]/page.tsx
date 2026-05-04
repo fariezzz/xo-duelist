@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
@@ -13,11 +13,71 @@ export default function LobbyRoomPage() {
   const [room, setRoom] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [roomCancelled, setRoomCancelled] = useState(false);
   const [readyLoading, setReadyLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const roomCode = useMemo(() => room?.room_code || '', [room]);
+  const isPublicRoom = !!room?.is_public;
+
+  // Refs for beforeunload handler (needs current values without re-registering)
+  const roomRef = useRef(room);
+  const meIdRef = useRef(meId);
+  useEffect(() => { roomRef.current = room; }, [room]);
+  useEffect(() => { meIdRef.current = meId; }, [meId]);
+
+  /**
+   * Fire-and-forget cancel via raw fetch + keepalive.
+   * This survives tab close — navigator.sendBeacon can't set auth headers,
+   * so we use fetch with keepalive: true instead.
+   */
+  const silentCancel = useCallback(() => {
+    const r = roomRef.current;
+    const me = meIdRef.current;
+    if (!r || !me) return;
+    // Only cancel if I'm the host, room is waiting, and no opponent joined
+    if (r.player1_id !== me) return;
+    if (r.status !== 'waiting') return;
+    if (r.player2_id) return;
+
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return;
+
+    // Get the access token from the Supabase client session cache
+    const storageKey = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
+    let accessToken = key; // fallback to anon key
+    try {
+      const raw = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.access_token) accessToken = parsed.access_token;
+      }
+    } catch { /* use anon key */ }
+
+    fetch(`${url}/rest/v1/rpc/cancel_lobby_room`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': key,
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ input_room_id: r.id }),
+      keepalive: true,
+    }).catch(() => {});
+  }, []);
+
+  // Auto-cancel room when host closes tab / navigates away
+  useEffect(() => {
+    const onBeforeUnload = () => silentCancel();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onBeforeUnload);
+    };
+  }, [silentCancel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +106,10 @@ export default function LobbyRoomPage() {
         if (updated.status === 'ongoing' && updated.player2_id) {
           router.replace(`/game/${updated.id}`);
         }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, () => {
+        // Room was deleted (host cancelled) — show cancelled UI
+        setRoomCancelled(true);
       })
       .subscribe();
     return () => { cancelled = true; supabaseClient.removeChannel(channel); };
@@ -101,6 +165,28 @@ export default function LobbyRoomPage() {
     </>
   );
 
+  if (roomCancelled) return (
+    <>
+      <Navbar />
+      <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px' }}>
+        <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', borderColor: 'rgba(239,68,68,0.2)' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚫</div>
+          <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Room Cancelled</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '24px', lineHeight: 1.5 }}>
+            The host has cancelled this room. You can go back to the lobby and join or create a new room.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => router.push('/lobby')}
+            style={{ width: '100%' }}
+          >
+            ← Back to Lobby
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   if (error && !room) return (
     <>
       <Navbar />
@@ -127,7 +213,9 @@ export default function LobbyRoomPage() {
         <div style={{ maxWidth: '600px', margin: '0 auto' }}>
           <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳ Waiting Room</h1>
           <p style={{ color: 'var(--text-muted)', marginBottom: '28px', fontSize: '0.95rem' }}>
-            Share the room code. When both players are ready, the host starts the game.
+            {isPublicRoom
+              ? 'Your room is visible in the lobby. When both players are ready, the host starts the game.'
+              : 'Share the room code. When both players are ready, the host starts the game.'}
           </p>
 
           {error && (
@@ -137,29 +225,80 @@ export default function LobbyRoomPage() {
           )}
 
           <div className="card" style={{ marginBottom: '20px' }}>
-            {/* Room Code */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Room Code</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  padding: '12px 20px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(124,58,237,0.3)',
-                  background: 'rgba(0,0,0,0.3)',
-                  fontFamily: 'var(--font-heading)',
-                  fontWeight: 700,
-                  fontSize: '1.8rem',
-                  letterSpacing: '0.35em',
-                  color: '#a78bfa',
-                  textShadow: '0 0 20px rgba(124,58,237,0.3)',
-                }}>
-                  {roomCode}
-                </div>
-                <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '12px 16px' }}>
-                  {copied ? '✓ Copied' : '📋 Copy'}
-                </button>
-              </div>
+            {/* Room Type Badge */}
+            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 14px',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontFamily: 'var(--font-heading)',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                ...(isPublicRoom
+                  ? {
+                      background: 'rgba(124,58,237,0.12)',
+                      border: '1px solid rgba(124,58,237,0.25)',
+                      color: '#a78bfa',
+                    }
+                  : {
+                      background: 'rgba(245,158,11,0.12)',
+                      border: '1px solid rgba(245,158,11,0.25)',
+                      color: '#fbbf24',
+                    }
+                ),
+              }}>
+                {isPublicRoom ? '🌐 Public Room' : '🔒 Private Room'}
+              </span>
             </div>
+
+            {/* Room Code — only for private rooms */}
+            {!isPublicRoom && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Room Code</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(124,58,237,0.3)',
+                    background: 'rgba(0,0,0,0.3)',
+                    fontFamily: 'var(--font-heading)',
+                    fontWeight: 700,
+                    fontSize: '1.8rem',
+                    letterSpacing: '0.35em',
+                    color: '#a78bfa',
+                    textShadow: '0 0 20px rgba(124,58,237,0.3)',
+                  }}>
+                    {roomCode}
+                  </div>
+                  <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '12px 16px' }}>
+                    {copied ? '✓ Copied' : '📋 Copy'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Public room info banner */}
+            {isPublicRoom && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                background: 'rgba(124,58,237,0.06)',
+                border: '1px solid rgba(124,58,237,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}>
+                <span style={{ fontSize: '1.2rem' }}>📡</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                  This room is visible in the lobby — anyone can join.
+                </span>
+              </div>
+            )}
 
             {/* Status Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>

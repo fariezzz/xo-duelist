@@ -285,6 +285,15 @@ body,
   }
 }
 
+@keyframes pulse-glow-green {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.7), 0 0 20px rgba(16, 185, 129, 0.3);
+  }
+}
+
 @keyframes float {
   0%, 100% {
     transform: translateY(0px);
