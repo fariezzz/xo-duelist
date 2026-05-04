@@ -58,7 +58,7 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
     letterSpacing: "0.06em",
   };
 
-  const eyeBtn = (show: boolean, toggle: () => void): React.CSSProperties => ({
+  const eyeBtnStyle: React.CSSProperties = {
     position: "absolute",
     right: "12px",
     top: "50%",
@@ -69,7 +69,7 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
     cursor: "pointer",
     fontSize: "1rem",
     padding: "4px",
-  });
+  };
 
   return (
     <div className="card" style={{ padding: "28px" }}>
@@ -133,7 +133,7 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
             onChange={(e) => { setCurrentPw(e.target.value); setError(null); }}
             style={{ paddingRight: "40px" }}
           />
-          <button onClick={() => setShowCurrent(!showCurrent)} style={eyeBtn(showCurrent, () => {})} type="button">
+          <button onClick={() => setShowCurrent(!showCurrent)} style={eyeBtnStyle} type="button">
             {showCurrent ? "🙈" : "👁"}
           </button>
         </div>
@@ -151,7 +151,7 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
             placeholder="Min 8 characters"
             style={{ paddingRight: "40px" }}
           />
-          <button onClick={() => setShowNew(!showNew)} style={eyeBtn(showNew, () => {})} type="button">
+          <button onClick={() => setShowNew(!showNew)} style={eyeBtnStyle} type="button">
             {showNew ? "🙈" : "👁"}
           </button>
         </div>
@@ -199,7 +199,7 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
               borderColor: confirmMismatch ? "rgba(239,68,68,0.5)" : confirmMatch ? "rgba(16,185,129,0.5)" : undefined,
             }}
           />
-          <button onClick={() => setShowConfirm(!showConfirm)} style={eyeBtn(showConfirm, () => {})} type="button">
+          <button onClick={() => setShowConfirm(!showConfirm)} style={eyeBtnStyle} type="button">
             {showConfirm ? "🙈" : "👁"}
           </button>
         </div>

@@ -25,7 +25,6 @@ export const CURSE_META: Record<CurseType, { icon: string; name: string; desc: s
 
 const ALL_SKILLS: SkillType[] = ['BARRIER', 'OVERWRITE', 'BOMB'];
 const ALL_CURSES: CurseType[] = ['BLIND', 'SLOW', 'FUMBLE'];
-const CORNERS = new Set([0, 4, 20, 24]);
 
 // 5 zones for even distribution (excluding corners)
 const ZONES: number[][] = [
@@ -206,7 +205,7 @@ export function shuffleBoard(
   const allCandidates = shuffle([...specialPositions, ...availableEmpty]);
   const newSpecialPositions = allCandidates.slice(0, specialCount);
 
-  const newPowerCells = powerCells.map((p, i) => {
+  const newPowerCells = powerCells.map((p) => {
     if (p.claimed) return p;
     const idx = unclaimedPower.indexOf(p);
     return { ...p, index: newSpecialPositions[idx] ?? p.index };

@@ -24,8 +24,6 @@ export default function Cell({
   skillTargetMode,
   isShuffling,
 }: Props) {
-  const size = 70;
-
   const isBarrier = value === 'BARRIER';
   const isEmpty = value === null;
   const isFilled = value === 'X' || value === 'O';
@@ -62,12 +60,12 @@ export default function Cell({
   }
 
   const baseStyle: React.CSSProperties = {
-    width: size,
-    height: size,
+    width: 'var(--board-cell-size)',
+    height: 'var(--board-cell-size)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '10px',
+    borderRadius: 'var(--board-cell-radius)',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor,
@@ -91,7 +89,7 @@ export default function Cell({
       position: 'absolute', inset: 0,
       background: 'rgba(10, 15, 30, 0.85)',
       backdropFilter: 'blur(4px)',
-      borderRadius: '10px',
+      borderRadius: 'var(--board-cell-radius)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: '1.2rem',
     }}>
@@ -100,14 +98,14 @@ export default function Cell({
   ) : null;
 
   const xStyle: React.CSSProperties = {
-    fontSize: '1.75rem', fontWeight: 800,
+    fontSize: 'var(--board-symbol-size)', fontWeight: 800,
     fontFamily: 'var(--font-heading)', color: '#a78bfa',
     textShadow: '0 0 12px rgba(124, 58, 237, 0.6), 0 0 24px rgba(124, 58, 237, 0.3)',
     lineHeight: 1,
   };
 
   const oStyle: React.CSSProperties = {
-    fontSize: '1.75rem', fontWeight: 800,
+    fontSize: 'var(--board-symbol-size)', fontWeight: 800,
     fontFamily: 'var(--font-heading)', color: '#fbbf24',
     textShadow: '0 0 12px rgba(245, 158, 11, 0.6), 0 0 24px rgba(245, 158, 11, 0.3)',
     lineHeight: 1,
@@ -115,17 +113,17 @@ export default function Cell({
 
   let content: React.ReactNode;
   if (isBarrier) {
-    content = <span style={{ fontSize: '1.5rem' }}>🛡️</span>;
+    content = <span style={{ fontSize: 'var(--board-symbol-size)' }}>🛡️</span>;
   } else if (value === 'X') {
     content = <span style={xStyle}>X</span>;
   } else if (value === 'O') {
     content = <span style={oStyle}>O</span>;
   } else if (isPowerCell) {
-    content = <span style={{ fontSize: '1.3rem', filter: 'drop-shadow(0 0 6px rgba(245,158,11,0.6))' }}>✦</span>;
+    content = <span style={{ fontSize: 'calc(var(--board-mark-size) + 0.1rem)', filter: 'drop-shadow(0 0 6px rgba(245,158,11,0.6))' }}>✦</span>;
   } else if (isCursedRevealed) {
-    content = <span style={{ fontSize: '1.3rem' }}>💀</span>;
+    content = <span style={{ fontSize: 'calc(var(--board-mark-size) + 0.1rem)' }}>💀</span>;
   } else {
-    content = <span style={{ fontSize: '1.25rem', color: 'rgba(255,255,255,0.15)', lineHeight: 1 }}>·</span>;
+    content = <span style={{ fontSize: 'var(--board-mark-size)', color: 'rgba(255,255,255,0.15)', lineHeight: 1 }}>·</span>;
   }
 
   return (
@@ -135,3 +133,4 @@ export default function Cell({
     </button>
   );
 }
+

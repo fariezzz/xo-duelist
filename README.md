@@ -76,9 +76,8 @@ Project structure
 
 - `app/` — Next.js app routes and pages
 - `components/` — React UI components
-- `lib/` — Supabase client and helpers (ELO, game logic)
+- `lib/` — Supabase client and game helpers
 - `supabase/migrations/` — SQL to bootstrap database
-- `supabase/functions/update-elo/` — Edge Function to update ELO and insert match history
 
 Notes & operational details
 
@@ -86,7 +85,7 @@ Notes & operational details
 - Matchmaking: the page `/matchmaking` inserts a row into `matchmaking_queue`. For a production-safe atomic matching flow, replace the client polling with a server-side RPC that performs a transactional match selection (SELECT ... FOR UPDATE SKIP LOCKED) and creates a `game_rooms` row atomically.
 - Lobby rooms: the page `/lobby` lets a player create a room code or join an existing room by code. Hosts wait on `/lobby/[roomId]` and automatically move to `/game/[roomId]` once the second player joins.
 - Game rooms sync: the app listens for `game_rooms` changes via Supabase Realtime channels.
-- ELO recalculation: `supabase/functions/update-elo` is a Supabase Edge Function that recalculates ELO, updates `profiles`, and inserts a `match_history` row. Call it when a `game_rooms` row becomes `finished` (you can hook it with a DB trigger or call it from server-side code).
+- ELO recalculation and match history are handled by database RPC/migration logic.
 
 Styling & UI
 
@@ -95,7 +94,6 @@ Styling & UI
 Deployment
 
 - Deploy the app to Vercel, and set the environment variables in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` (the service role key should be kept secret).
-- Deploy the Supabase Edge Function via `supabase functions deploy update-elo --project-ref <ref>`.
 
 Security & RLS
 

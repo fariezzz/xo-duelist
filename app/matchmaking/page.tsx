@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import Navbar from '../../components/Navbar';
 import MatchFoundModal from '../../components/notifications/MatchFoundModal';
 import useSound from 'use-sound';
+import { useScopedSessionLock } from '../../hooks/useScopedSessionLock';
 
 export default function MatchmakingPage() {
   const router = useRouter();
+  const lock = useScopedSessionLock('arena');
   const [joined, setJoined] = useState(false);
   const [time, setTime] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -31,8 +33,12 @@ export default function MatchmakingPage() {
 
   // Keep timeRef in sync
   useEffect(() => { timeRef.current = time; }, [time]);
+  useEffect(() => {
+    if (lock.status === 'inactive') router.replace('/');
+  }, [lock.status, router]);
 
   useEffect(() => {
+    if (lock.status !== 'active') return;
     let cancelled = false;
 
     (async () => {
@@ -86,10 +92,10 @@ export default function MatchmakingPage() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [router]);
+  }, [lock.status, router]);
 
   const tryMatch = useCallback(async () => {
-    if (!meId || matchingRef.current || redirectedRef.current) return;
+    if (lock.status !== 'active' || !meId || matchingRef.current || redirectedRef.current) return;
     matchingRef.current = true;
 
     try {
@@ -131,11 +137,11 @@ export default function MatchmakingPage() {
     } finally {
       matchingRef.current = false;
     }
-  }, [meId, playMatchFound]);
+  }, [lock.status, meId, playMatchFound]);
 
   // Realtime + polling effect (stable — no time dependency)
   useEffect(() => {
-    if (!joined || !meId) return;
+    if (lock.status !== 'active' || !joined || !meId) return;
 
     // Initial attempt
     tryMatch();
@@ -155,10 +161,10 @@ export default function MatchmakingPage() {
       clearInterval(check);
       supabaseClient.removeChannel(queueChannel);
     };
-  }, [joined, meId, tryMatch]);
+  }, [joined, lock.status, meId, tryMatch]);
 
   async function cancel() {
-    if (meId) {
+    if (lock.status === 'active' && meId) {
       await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
     }
     router.push('/dashboard');
@@ -188,6 +194,36 @@ export default function MatchmakingPage() {
             textAlign: 'center',
           }}
         >
+          {lock.status === 'conflict' && (
+            <div
+              className="card"
+              style={{
+                marginBottom: '18px',
+                padding: '14px',
+                borderColor: 'rgba(245, 158, 11, 0.35)',
+                boxShadow: '0 0 24px rgba(245, 158, 11, 0.16)',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#f59e0b', marginBottom: '6px' }}>
+                Session aktif di browser/tab lain
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '10px' }}>
+                Tab ini read-only. Ambil alih sesi jika kamu ingin lanjut matchmaking dari sini.
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
+                disabled={lock.isTakingOver}
+                onClick={async () => {
+                  await lock.takeOver();
+                }}
+              >
+                {lock.isTakingOver ? 'Taking over...' : 'Take Over Session'}
+              </button>
+            </div>
+          )}
+
           {/* Radar animation */}
           <div style={{ position: 'relative', width: 120, height: 120, margin: '0 auto 28px' }}>
             {[0, 1, 2].map(i => (

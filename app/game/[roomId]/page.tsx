@@ -13,6 +13,7 @@ import RankUpOverlay from '../../../components/notifications/RankUpOverlay';
 import GameHUD from '../../../components/GameHUD';
 import SkillCard from '../../../components/SkillCard';
 import { useNotification } from '../../../hooks/useNotification';
+import { useScopedSessionLock } from '../../../hooks/useScopedSessionLock';
 import { checkWinner4, isDraw } from '../../../lib/gameLogic';
 import {
   type SkillType, type PowerCell, type CurseCell, type PlayerCurse, type BoardCell,
@@ -39,6 +40,7 @@ export default function GameRoom() {
   const roomId = params?.roomId as string;
   const router = useRouter();
   const { showToast, showBanner, banner, connectionStatus, setConnectionStatus } = useNotification();
+  const lock = useScopedSessionLock('arena');
 
   // Stable refs for notification functions to avoid re-render loops
   const showToastRef = useRef(showToast);
@@ -248,7 +250,6 @@ export default function GameRoom() {
   /* ── Helper: am I player1? ────────────────────── */
   const amP1 = room?.player1_id === meId;
   const mySkillKey = amP1 ? 'player1_skill' : 'player2_skill';
-  const oppSkillKey = amP1 ? 'player2_skill' : 'player1_skill';
   const myCurseKey = amP1 ? 'player1_curse' : 'player2_curse';
   const oppCurseKey = amP1 ? 'player2_curse' : 'player1_curse';
   const mySkill: SkillType | null = room?.[mySkillKey] ?? null;
@@ -263,7 +264,7 @@ export default function GameRoom() {
 
   /* ── Use Skill ───────────────────────────────────── */
   function handleUseSkill() {
-    if (!room || room.current_turn !== meId || !mySkill || turnSubmitLockRef.current) return;
+    if (lock.status !== 'active' || !room || room.current_turn !== meId || !mySkill || turnSubmitLockRef.current) return;
     const check = canUseSkill(mySkill, turnCount);
     if (!check.ok) { showToast({ type: 'error', title: 'Cannot Use Skill', message: check.reason! }); return; }
     // Enter target mode
@@ -276,7 +277,7 @@ export default function GameRoom() {
 
   /* ── Apply Skill to target cell ──────────────────── */
   async function applySkillToCell(i: number) {
-    if (!activeSkillUse || !room || room.current_turn !== meId || turnSubmitLockRef.current) return;
+    if (lock.status !== 'active' || !activeSkillUse || !room || room.current_turn !== meId || turnSubmitLockRef.current) return;
     turnSubmitLockRef.current = true;
     setIsSubmittingTurn(true);
     try {
@@ -331,7 +332,7 @@ export default function GameRoom() {
 
   /* ── Make a move ───────────────────────────────── */
   async function makeMove(i: number) {
-    if (!room || room.current_turn !== meId || turnSubmitLockRef.current) return;
+    if (lock.status !== 'active' || !room || room.current_turn !== meId || turnSubmitLockRef.current) return;
     if (skillTargetMode) { applySkillToCell(i); return; }
     if (board[i] !== null) return;
     turnSubmitLockRef.current = true;
@@ -360,7 +361,7 @@ export default function GameRoom() {
     if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
 
     // Power Cell check
-    let newPowerCells = [...powerCells];
+    const newPowerCells = [...powerCells];
     const pc = newPowerCells.find(p => p.index === targetCell && !p.claimed);
     if (pc) {
       pc.claimed = true;
@@ -376,7 +377,7 @@ export default function GameRoom() {
     }
 
     // Curse Cell check
-    let newCurseCells = [...curseCells];
+    const newCurseCells = [...curseCells];
     const cc = newCurseCells.find(c => c.index === targetCell && !c.triggered);
     if (cc && !myCurse) {
       cc.triggered = true;
@@ -436,7 +437,7 @@ export default function GameRoom() {
 
   /* ── Board click dispatcher ────────────────────── */
   function handleBoardClick(i: number) {
-    if (turnSubmitLockRef.current) return;
+    if (lock.status !== 'active' || turnSubmitLockRef.current) return;
     if (skillTargetMode && skillTargetCells.includes(i)) {
       applySkillToCell(i);
     } else if (!skillTargetMode) {
@@ -451,12 +452,12 @@ export default function GameRoom() {
 
   /* ── Timer expire ──────────────────────────────── */
   const onExpire = useCallback(async () => {
-    if (!room) return;
+    if (!room || lock.status !== 'active') return;
     showToastRef.current({ type: 'error', title: "Time's Up!", message: 'You lost this round.' });
     const loser = room.current_turn;
     const winner = loser === room.player1_id ? room.player2_id : room.player1_id;
     await supabaseClient.from('game_rooms').update({ status: 'finished', winner_id: winner }).eq('id', roomId);
-  }, [room, roomId]);
+  }, [lock.status, room, roomId]);
 
   /* ── Timer warning callback ────────────────────── */
   const onTimerWarning = useCallback((secondsLeft: number) => {
@@ -499,6 +500,32 @@ export default function GameRoom() {
         <div className="game-shell">
           {/* Game Banner */}
           <GameBanner banner={banner} />
+          {lock.status === 'conflict' && (
+            <div
+              className="card"
+              style={{
+                marginBottom: '10px',
+                borderColor: 'rgba(245, 158, 11, 0.35)',
+                boxShadow: '0 0 24px rgba(245, 158, 11, 0.16)',
+              }}
+            >
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#f59e0b', marginBottom: '6px' }}>
+                Sesi ini sedang read-only
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px' }}>
+                Akun ini aktif di tab/browser lain. Ambil alih sesi untuk mulai bermain dari tab ini.
+              </div>
+              <button
+                className="btn btn-primary"
+                disabled={lock.isTakingOver}
+                onClick={async () => {
+                  await lock.takeOver();
+                }}
+              >
+                {lock.isTakingOver ? 'Taking over...' : 'Take Over Session'}
+              </button>
+            </div>
+          )}
 
           <div className="game-grid">
             <aside className="game-side">
@@ -559,68 +586,21 @@ export default function GameRoom() {
                 <SkillCard
                   skill={mySkill}
                   onUseSkill={handleUseSkill}
-                  disabled={!isMyTurn || skillTargetMode || isSubmittingTurn}
+                  disabled={lock.status !== 'active' || !isMyTurn || skillTargetMode || isSubmittingTurn}
                   isNew={newSkillFlag}
                 />
               )}
 
               <div className="game-bottom-actions" style={{ textAlign: 'center' }}>
                 {room.status === 'ongoing' ? (
-                  !showSurrenderConfirm ? (
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => setShowSurrenderConfirm(true)}
-                      style={{ minWidth: '180px' }}
-                    >
-                      Surrender
-                    </button>
-                  ) : (
-                    <div
-                      className="card"
-                      style={{
-                        display: 'inline-flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '16px 20px',
-                        borderColor: 'rgba(239,68,68,0.3)',
-                        boxShadow: '0 0 24px rgba(239,68,68,0.1)',
-                      }}
-                    >
-                      <span style={{
-                        fontFamily: 'var(--font-heading)',
-                        fontWeight: 700,
-                        fontSize: '0.95rem',
-                        color: '#ef4444',
-                      }}>
-                        Surrender this match?
-                      </span>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                        {room?.player1_ready && room?.player2_ready ? 'This match will not affect ELO.' : 'You will lose ELO points.'}
-                      </span>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className="btn btn-danger"
-                          onClick={async () => {
-                            if (!room || !meId) return;
-                            const winner = room.player1_id === meId ? room.player2_id : room.player1_id;
-                            await supabaseClient.from('game_rooms').update({ status: 'finished', winner_id: winner }).eq('id', roomId);
-                            setShowSurrenderConfirm(false);
-                          }}
-                          style={{ minWidth: '112px' }}
-                        >
-                          Yes
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          onClick={() => setShowSurrenderConfirm(false)}
-                          style={{ minWidth: '86px' }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )
+                  <button
+                    className="btn btn-danger"
+                    disabled={lock.status !== 'active'}
+                    onClick={() => setShowSurrenderConfirm(true)}
+                    style={{ minWidth: '180px' }}
+                  >
+                    Surrender
+                  </button>
                 ) : (
                   <button className="btn btn-ghost" onClick={() => router.push('/dashboard')}>
                     Return to Dashboard
@@ -635,7 +615,7 @@ export default function GameRoom() {
                 <Board
                   board={board as any}
                   onMove={handleBoardClick}
-                  disabled={room.status !== 'ongoing' || !isMyTurn || isSubmittingTurn}
+                  disabled={lock.status !== 'active' || room.status !== 'ongoing' || !isMyTurn || isSubmittingTurn}
                   winningCells={[]}
                   powerCells={powerCells}
                   curseCells={curseCells}
@@ -649,6 +629,73 @@ export default function GameRoom() {
           </div>
         </div>
       </div>
+
+      {showSurrenderConfirm && room.status === 'ongoing' && (
+        <div
+          onClick={() => setShowSurrenderConfirm(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 96,
+            background: 'rgba(0, 0, 0, 0.72)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              borderColor: 'rgba(239,68,68,0.3)',
+              boxShadow: '0 0 30px rgba(239,68,68,0.14)',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontWeight: 700,
+                fontSize: '1.1rem',
+                color: '#ef4444',
+                marginBottom: '8px',
+              }}
+            >
+              Surrender this match?
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginBottom: '16px' }}>
+              {room?.player1_ready && room?.player2_ready ? 'This match will not affect ELO.' : 'You will lose ELO points.'}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                className="btn btn-danger"
+                disabled={lock.status !== 'active'}
+                onClick={async () => {
+                  if (!room || !meId) return;
+                  const winner = room.player1_id === meId ? room.player2_id : room.player1_id;
+                  await supabaseClient.from('game_rooms').update({ status: 'finished', winner_id: winner }).eq('id', roomId);
+                  setShowSurrenderConfirm(false);
+                }}
+                style={{ minWidth: '120px' }}
+              >
+                Yes, Surrender
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowSurrenderConfirm(false)}
+                style={{ minWidth: '110px' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Connection indicator */}
       <ConnectionStatus status={connectionStatus} />
 
