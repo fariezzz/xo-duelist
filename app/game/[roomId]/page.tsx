@@ -23,6 +23,8 @@ import {
 } from '../../../lib/mechanics';
 import useSound from 'use-sound';
 
+import LiveChat from '../../../components/LiveChat';
+
 /* Tier helper — matches TierBadge logic */
 function getTierName(elo: number) {
   if (elo >= 1400) return 'Diamond';
@@ -484,6 +486,13 @@ export default function GameRoom() {
 
   const isMyTurn = room.current_turn === meId;
 
+  const myPlayerName =
+  mySymbol === 'X'
+    ? playerProfiles?.p1.username
+    : mySymbol === 'O'
+      ? playerProfiles?.p2.username
+      : 'Player';
+
   return (
     <>
       <div className="animate-fade-in game-screen">
@@ -662,6 +671,7 @@ export default function GameRoom() {
         onPlayAgain={() => router.push('/matchmaking')}
         onDashboard={() => router.push('/dashboard')}
       />
+      <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />
     </>
   );
 }

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
+import LiveChat from '../../../components/LiveChat';
 
 export default function LobbyRoomPage() {
   const params = useParams();
