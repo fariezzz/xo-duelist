@@ -14,6 +14,8 @@ export default function LobbyRoomPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roomCancelled, setRoomCancelled] = useState(false);
+  const [leftRoom, setLeftRoom] = useState(false);
+  const [showConfirm, setShowConfirm] = useState<'cancel' | 'exit' | null>(null);
   const [readyLoading, setReadyLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
@@ -118,10 +120,21 @@ export default function LobbyRoomPage() {
   async function cancelRoom() {
     try {
       if (!room?.id) return;
+      setShowConfirm(null);
       const { error } = await supabaseClient.rpc('cancel_lobby_room', { input_room_id: room.id });
       if (error) throw error;
-      router.push('/dashboard');
+      setRoomCancelled(true);
     } catch (err: any) { setError(err?.message || 'Failed to cancel room'); }
+  }
+
+  async function exitRoom() {
+    try {
+      if (!room?.id) return;
+      setShowConfirm(null);
+      const { error } = await supabaseClient.rpc('leave_lobby_room', { input_room_id: room.id });
+      if (error) throw error;
+      setLeftRoom(true);
+    } catch (err: any) { setError(err?.message || 'Failed to leave room'); }
   }
 
   async function toggleReady() {
@@ -173,15 +186,57 @@ export default function LobbyRoomPage() {
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚫</div>
           <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Room Cancelled</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '24px', lineHeight: 1.5 }}>
-            The host has cancelled this room. You can go back to the lobby and join or create a new room.
+            {meId && room?.player1_id === meId
+              ? 'You have cancelled this room.'
+              : 'The host has cancelled this room.'}
           </p>
-          <button
-            className="btn btn-primary"
-            onClick={() => router.push('/lobby')}
-            style={{ width: '100%' }}
-          >
-            ← Back to Lobby
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              className="btn btn-primary"
+              onClick={() => router.push('/lobby')}
+              style={{ width: '100%' }}
+            >
+              🏠 Back to Lobby
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => router.push('/dashboard')}
+              style={{ width: '100%' }}
+            >
+              📊 Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  if (leftRoom) return (
+    <>
+      <Navbar />
+      <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px' }}>
+        <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', borderColor: 'rgba(245,158,11,0.2)' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚶</div>
+          <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Left Room</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '24px', lineHeight: 1.5 }}>
+            You have left the room. You can join another room or create a new one.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              className="btn btn-primary"
+              onClick={() => router.push('/lobby')}
+              style={{ width: '100%' }}
+            >
+              🏠 Back to Lobby
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => router.push('/dashboard')}
+              style={{ width: '100%' }}
+            >
+              📊 Dashboard
+            </button>
+          </div>
         </div>
       </div>
     </>
@@ -341,11 +396,81 @@ export default function LobbyRoomPage() {
 
           {/* Bottom actions */}
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="btn btn-ghost" onClick={() => router.push('/dashboard')} style={{ flex: 1 }}>← Dashboard</button>
-            {isHost && <button className="btn btn-danger" onClick={cancelRoom} style={{ flex: 1 }}>Cancel Room</button>}
+            {isHost ? (
+              <button className="btn btn-danger" onClick={() => setShowConfirm('cancel')} style={{ flex: 1 }}>Cancel Room</button>
+            ) : (
+              <button className="btn btn-danger" onClick={() => setShowConfirm('exit')} style={{ flex: 1 }}>🚶 Exit Room</button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* ── Confirm Dialog ──────────────────────────────── */}
+      {showConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+          }}
+          onClick={() => setShowConfirm(null)}
+        >
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+          }} />
+          <div
+            className="animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '400px',
+              background: 'var(--bg-layer-2)',
+              border: '1px solid var(--card-border)',
+              borderRadius: '20px',
+              padding: '32px',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>
+              {showConfirm === 'cancel' ? '⚠️' : '🚶'}
+            </div>
+            <h2 className="heading" style={{ fontSize: '1.3rem', marginBottom: '8px' }}>
+              {showConfirm === 'cancel' ? 'Cancel Room?' : 'Leave Room?'}
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '24px', lineHeight: 1.5 }}>
+              {showConfirm === 'cancel'
+                ? 'Are you sure you want to cancel this room? All players will be removed.'
+                : 'Are you sure you want to leave this room? You can rejoin later if the room is still available.'}
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowConfirm(null)}
+                style={{ flex: 1 }}
+              >
+                Go Back
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={showConfirm === 'cancel' ? cancelRoom : exitRoom}
+                style={{ flex: 1 }}
+              >
+                {showConfirm === 'cancel' ? 'Yes, Cancel' : 'Yes, Leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
