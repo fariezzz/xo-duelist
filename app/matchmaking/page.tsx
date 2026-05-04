@@ -82,7 +82,9 @@ export default function MatchmakingPage() {
 
     return () => {
       cancelled = true;
-      clearInterval(intervalRef.current);
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+      }
     };
   }, [router]);
 
