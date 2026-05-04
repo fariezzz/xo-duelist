@@ -1,4 +1,4 @@
-export type Cell = 'X' | 'O' | null;
+export type Cell = 'X' | 'O' | 'BARRIER' | null;
 
 // Board is an array of 25 cells (row-major order)
 export function index(r: number, c: number) {

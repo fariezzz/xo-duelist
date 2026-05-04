@@ -5,6 +5,7 @@ import { Rajdhani } from 'next/font/google';
 import { NotificationProvider } from '../context/NotificationContext';
 import ToastContainer from '../components/notifications/ToastContainer';
 import BackgroundMusic from '../components/BackgroundMusic';
+import SingleTabGuard from '../components/SingleTabGuard';
 
 const rajdhani = Rajdhani({
   weight: ['500', '600', '700'],
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* App with notification system */}
         <NotificationProvider>
+          <SingleTabGuard />
           {children}
           <ToastContainer />
         </NotificationProvider>

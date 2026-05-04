@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rank, setRank] = useState<{ position: number; total: number } | null>(null);
+  const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +68,18 @@ export default function DashboardPage() {
         }
 
         if (!cancelled) setProfile(nextProfile);
+
+        // Check if user has an ongoing game that can be rejoined.
+        const { data: activeRooms } = await supabaseClient
+          .from('game_rooms')
+          .select('id')
+          .or(`player1_id.eq.${uid},player2_id.eq.${uid}`)
+          .eq('status', 'ongoing')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (!cancelled) {
+          setActiveGameRoomId(activeRooms && activeRooms.length > 0 ? activeRooms[0].id : null);
+        }
 
         // Fetch rank position
         const { count } = await supabaseClient
@@ -360,6 +373,15 @@ export default function DashboardPage() {
 
           {/* ── Action Buttons ──────────────────────────── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
+            {activeGameRoomId && (
+              <button
+                className="btn btn-success btn-lg"
+                onClick={() => router.push(`/game/${activeGameRoomId}`)}
+                style={{ width: '100%' }}
+              >
+                Rejoin Ongoing Match
+              </button>
+            )}
             <button
               className="btn btn-primary btn-lg animate-pulse-glow"
               onClick={() => router.push('/matchmaking')}

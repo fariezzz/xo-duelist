@@ -3,13 +3,22 @@ import React, { useEffect, useRef, useState } from 'react';
 
 type Props = {
   seconds: number;
+  startedAt?: string | null;
   onExpire?: () => void;
   onWarning?: (secondsLeft: number) => void;
   run?: boolean;
 };
 
-export default function Timer({ seconds, onExpire, onWarning, run = true }: Props) {
-  const [time, setTime] = useState(seconds);
+function getInitialTime(seconds: number, startedAt?: string | null) {
+  if (!startedAt) return seconds;
+  const startedMs = Date.parse(startedAt);
+  if (Number.isNaN(startedMs)) return seconds;
+  const elapsed = Math.floor((Date.now() - startedMs) / 1000);
+  return Math.max(0, seconds - Math.max(0, elapsed));
+}
+
+export default function Timer({ seconds, startedAt, onExpire, onWarning, run = true }: Props) {
+  const [time, setTime] = useState(() => getInitialTime(seconds, startedAt));
   const onExpireRef = useRef(onExpire);
   const onWarningRef = useRef(onWarning);
 
@@ -23,7 +32,7 @@ export default function Timer({ seconds, onExpire, onWarning, run = true }: Prop
       onExpireRef.current?.();
       return;
     }
-    const t = setTimeout(() => setTime((s) => s - 1), 1000);
+    const t = setTimeout(() => setTime((s) => Math.max(0, s - 1)), 1000);
     return () => clearTimeout(t);
   }, [time, run]);
 

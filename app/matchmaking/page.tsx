@@ -10,7 +10,7 @@ export default function MatchmakingPage() {
   const router = useRouter();
   const [joined, setJoined] = useState(false);
   const [time, setTime] = useState(0);
-  const intervalRef = useRef<any>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const matchingRef = useRef(false);
   const timeRef = useRef(0);
@@ -41,6 +41,20 @@ export default function MatchmakingPage() {
       const uid = s.data.session.user.id;
       if (cancelled) return;
       setMeId(uid);
+
+      // Rejoin safeguard: if an ongoing match already exists, jump back into it.
+      const { data: activeRooms } = await supabaseClient
+        .from('game_rooms')
+        .select('id')
+        .or(`player1_id.eq.${uid},player2_id.eq.${uid}`)
+        .eq('status', 'ongoing')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (activeRooms && activeRooms.length > 0) {
+        redirectedRef.current = true;
+        router.replace(`/game/${activeRooms[0].id}`);
+        return;
+      }
 
       // Get ELO
       const { data: profile } = await supabaseClient
@@ -77,113 +91,32 @@ export default function MatchmakingPage() {
     matchingRef.current = true;
 
     try {
-      // Check if I'm still in the queue
-      const { data: myEntry } = await supabaseClient
-        .from('matchmaking_queue')
-        .select('player_id')
-        .eq('player_id', meId)
-        .maybeSingle();
-
-      if (!myEntry) {
-        // I've been matched by the other player already — check for my game room
-        const { data: rooms } = await supabaseClient
-          .from('game_rooms')
-          .select('*')
-          .or(`player1_id.eq.${meId},player2_id.eq.${meId}`)
-          .eq('status', 'ongoing')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (rooms && rooms.length > 0 && !redirectedRef.current) {
-          await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
-          redirectedRef.current = true;
-          const r = rooms[0];
-          const oppId = r.player1_id === meId ? r.player2_id : r.player1_id;
-          const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId).single();
-          const { data: oppProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', oppId).single();
-          setMatchFound({
-            gameId: r.id,
-            myName: myProfile?.username ?? 'You',
-            myElo: myProfile?.elo_rating ?? 1000,
-            myAvatarUrl: myProfile?.avatar_url ?? null,
-            oppName: oppProfile?.username ?? 'Opponent',
-            oppElo: oppProfile?.elo_rating ?? 1000,
-            oppAvatarUrl: oppProfile?.avatar_url ?? null,
-          });
-        }
-        return;
-      }
-
-      // Get my ELO
-      const { data: meProfile } = await supabaseClient
-        .from('profiles')
-        .select('elo_rating')
-        .eq('id', meId)
-        .single();
-      if (!meProfile) return;
-
       // Expand range based on wait time
       const t = timeRef.current;
       const range = t > 60 ? 100000 : t > 30 ? 400 : 200;
 
-      // Find oldest opponent in queue within range
-      const { data: opponents } = await supabaseClient
-        .from('matchmaking_queue')
-        .select('*')
-        .neq('player_id', meId)
-        .order('joined_at', { ascending: true })
-        .limit(1);
-
-      if (!opponents || opponents.length === 0) return;
-
-      const opp = opponents[0];
-      const diff = Math.abs(opp.elo_rating - meProfile.elo_rating);
-      if (diff > range) return;
-
-      // Use a deterministic tiebreaker: only the player with the lower UUID creates the room.
-      // This prevents both players from creating duplicate rooms simultaneously.
-      if (meId > opp.player_id) {
-        // I lose the tiebreak — let the other player create the room.
-        // I'll discover it via the realtime channel or next poll.
+      // Match decision is atomic in DB transaction to avoid cross-pairing races.
+      const { data: matchRows, error: matchErr } = await supabaseClient
+        .rpc('find_match_atomic', { input_range: range });
+      if (matchErr) {
+        console.error('find_match_atomic failed:', matchErr);
         return;
       }
+      const match = Array.isArray(matchRows) ? matchRows[0] : null;
+      if (!match?.room_id) return;
 
-      // I win the tiebreak — create the room
-      // Randomize who plays X (player1) vs O (player2)
-      const iGoFirst = Math.random() < 0.5;
-      const p1 = iGoFirst ? meId : opp.player_id;
-      const p2 = iGoFirst ? opp.player_id : meId;
-
-      const roomCode = Array.from({ length: 6 }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
-      const { data: room, error: roomError } = await supabaseClient
-        .from('game_rooms')
-        .insert([{
-          player1_id: p1,
-          player2_id: p2,
-          board_state: JSON.stringify(Array(25).fill(null)),
-          current_turn: p1,
-          status: 'ongoing',
-          room_code: roomCode,
-        }])
-        .select('id')
-        .single();
-
-      if (roomError || !room) {
-        console.error('Failed to create room:', roomError?.message, roomError?.details, roomError?.hint, roomError);
-        return;
-      }
-
-      // Remove both players from queue (separate deletes for RLS compatibility)
-      await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
-      await supabaseClient.from('matchmaking_queue').delete().eq('player_id', opp.player_id);
+      const p1 = match.player1_id as string;
+      const p2 = match.player2_id as string;
+      if (p1 !== meId && p2 !== meId) return;
+      const oppId = p1 === meId ? p2 : p1;
 
       if (!redirectedRef.current) {
         redirectedRef.current = true;
-        // Fetch profile data for the VS modal
+        await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
         const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId).single();
-        const { data: oppProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', opp.player_id).single();
+        const { data: oppProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', oppId).single();
         setMatchFound({
-          gameId: room.id,
+          gameId: match.room_id,
           myName: myProfile?.username ?? 'You',
           myElo: myProfile?.elo_rating ?? 1000,
           myAvatarUrl: myProfile?.avatar_url ?? null,
@@ -191,11 +124,12 @@ export default function MatchmakingPage() {
           oppElo: oppProfile?.elo_rating ?? 1000,
           oppAvatarUrl: oppProfile?.avatar_url ?? null,
         });
+        playMatchFound();
       }
     } finally {
       matchingRef.current = false;
     }
-  }, [meId, router]);
+  }, [meId, playMatchFound]);
 
   // Realtime + polling effect (stable — no time dependency)
   useEffect(() => {
@@ -215,39 +149,9 @@ export default function MatchmakingPage() {
       })
       .subscribe();
 
-    // Realtime: when a game room is created for me, redirect
-    const roomChannel = supabaseClient
-      .channel(`mm-room-${meId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'game_rooms' }, (payload: any) => {
-        const record = payload.new || payload.record;
-        if (!record) return;
-        if ((record.player1_id === meId || record.player2_id === meId) && !redirectedRef.current) {
-          supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId).then(() => {});
-          redirectedRef.current = true;
-          // Fetch profiles for the VS modal
-          const oppId = record.player1_id === meId ? record.player2_id : record.player1_id;
-          (async () => {
-            const { data: myP } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId).single();
-            const { data: oppP } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', oppId).single();
-            setMatchFound({
-              gameId: record.id,
-              myName: myP?.username ?? 'You',
-              myElo: myP?.elo_rating ?? 1000,
-              myAvatarUrl: myP?.avatar_url ?? null,
-              oppName: oppP?.username ?? 'Opponent',
-              oppElo: oppP?.elo_rating ?? 1000,
-              oppAvatarUrl: oppP?.avatar_url ?? null,
-            });
-            playMatchFound();
-          })();
-        }
-      })
-      .subscribe();
-
     return () => {
       clearInterval(check);
       supabaseClient.removeChannel(queueChannel);
-      supabaseClient.removeChannel(roomChannel);
     };
   }, [joined, meId, tryMatch]);
 
