@@ -26,6 +26,9 @@ function timeAgo(dateStr: string) {
   return `${hrs}h ago`;
 }
 
+const LOBBY_ROOM_STORAGE_KEY = 'xo-duelist-lobby-room';
+const GRACE_PERIOD_MS = 60_000;
+
 export default function LobbyPage() {
   const router = useRouter();
   const [roomCode, setRoomCode] = useState('');
@@ -35,11 +38,43 @@ export default function LobbyPage() {
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [publicRoomsLoading, setPublicRoomsLoading] = useState(true);
   const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
+  const [pendingRejoin, setPendingRejoin] = useState<{ roomId: string; role: string; timeLeft: number } | null>(null);
 
   useEffect(() => {
     (async () => {
       const { data } = await supabaseClient.auth.getSession();
-      if (!data.session) router.push('/');
+      if (!data.session) { router.push('/'); return; }
+
+      // Check for a room we recently left (grace period)
+      try {
+        const raw = localStorage.getItem(LOBBY_ROOM_STORAGE_KEY);
+        if (raw) {
+          const presence = JSON.parse(raw);
+          if (presence?.leftAt && presence?.roomId) {
+            const elapsed = Date.now() - presence.leftAt;
+            if (elapsed < GRACE_PERIOD_MS) {
+              // Verify the room still exists
+              const { data: roomData } = await supabaseClient
+                .from('game_rooms')
+                .select('id, status')
+                .eq('id', presence.roomId)
+                .eq('status', 'waiting')
+                .maybeSingle();
+              if (roomData) {
+                setPendingRejoin({
+                  roomId: presence.roomId,
+                  role: presence.role || 'host',
+                  timeLeft: Math.ceil((GRACE_PERIOD_MS - elapsed) / 1000),
+                });
+              } else {
+                localStorage.removeItem(LOBBY_ROOM_STORAGE_KEY);
+              }
+            } else {
+              localStorage.removeItem(LOBBY_ROOM_STORAGE_KEY);
+            }
+          }
+        }
+      } catch { /* ignore */ }
     })();
   }, [router]);
 
@@ -141,6 +176,52 @@ export default function LobbyPage() {
           {error && (
             <div className="card" style={{ borderColor: 'rgba(239,68,68,0.3)', marginBottom: '20px', padding: '14px 20px', color: '#ef4444', fontSize: '0.9rem' }}>
               {error}
+            </div>
+          )}
+
+          {/* Rejoin banner — shown when user has a room within grace period */}
+          {pendingRejoin && (
+            <div className="card animate-fade-in" style={{
+              marginBottom: '20px',
+              padding: '18px 22px',
+              borderColor: 'rgba(124,58,237,0.3)',
+              background: 'rgba(124,58,237,0.05)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: '1.5rem' }}>🔄</span>
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.95rem', marginBottom: '2px' }}>
+                      Active Room Found
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      You have an active room. Rejoin before it expires (~{pendingRejoin.timeLeft}s left)
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      localStorage.removeItem(LOBBY_ROOM_STORAGE_KEY);
+                      router.push(`/lobby/${pendingRejoin.roomId}`);
+                    }}
+                    style={{ padding: '10px 20px', fontSize: '0.9rem' }}
+                  >
+                    🔗 Rejoin Room
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      localStorage.removeItem(LOBBY_ROOM_STORAGE_KEY);
+                      setPendingRejoin(null);
+                    }}
+                    style={{ padding: '10px 14px', fontSize: '0.85rem' }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

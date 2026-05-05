@@ -6,6 +6,49 @@ import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
 import LiveChat from '../../../components/LiveChat';
 
+const HEARTBEAT_INTERVAL_MS = 10_000; // Send heartbeat every 10s
+const GRACE_PERIOD_MS = 60_000; // 1 minute grace period on tab close
+const LOBBY_ROOM_STORAGE_KEY = 'xo-duelist-lobby-room';
+
+/** Save room presence info to localStorage (survives tab close for grace period) */
+function saveLobbyPresence(roomId: string, role: 'host' | 'guest') {
+  try {
+    localStorage.setItem(LOBBY_ROOM_STORAGE_KEY, JSON.stringify({
+      roomId,
+      role,
+      leftAt: null, // will be set by pagehide/beforeunload
+      timestamp: Date.now(),
+    }));
+  } catch { /* ignore */ }
+}
+
+/** Mark the lobby presence as "left" with a timestamp for grace period tracking */
+function markLobbyLeft() {
+  try {
+    const raw = localStorage.getItem(LOBBY_ROOM_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    data.leftAt = Date.now();
+    localStorage.setItem(LOBBY_ROOM_STORAGE_KEY, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
+/** Clear lobby presence entirely (room was cancelled/left/started) */
+function clearLobbyPresence() {
+  try {
+    localStorage.removeItem(LOBBY_ROOM_STORAGE_KEY);
+  } catch { /* ignore */ }
+}
+
+/** Get saved lobby presence */
+function getLobbyPresence(): { roomId: string; role: string; leftAt: number | null; timestamp: number } | null {
+  try {
+    const raw = localStorage.getItem(LOBBY_ROOM_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
 export default function LobbyRoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -20,67 +63,85 @@ export default function LobbyRoomPage() {
   const [startLoading, setStartLoading] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [reconnected, setReconnected] = useState(false);
   const roomCode = useMemo(() => room?.room_code || '', [room]);
   const isPublicRoom = !!room?.is_public;
 
-  // Refs for beforeunload handler (needs current values without re-registering)
+  // Refs for latest values (used in event handlers without re-registering)
   const roomRef = useRef(room);
   const meIdRef = useRef(meId);
   useEffect(() => { roomRef.current = room; }, [room]);
   useEffect(() => { meIdRef.current = meId; }, [meId]);
 
-  /**
-   * Fire-and-forget cancel via raw fetch + keepalive.
-   * This survives tab close — navigator.sendBeacon can't set auth headers,
-   * so we use fetch with keepalive: true instead.
-   */
-  const silentCancel = useCallback(() => {
-    const r = roomRef.current;
-    const me = meIdRef.current;
-    if (!r || !me) return;
-    // Only cancel if I'm the host, room is waiting, and no opponent joined
-    if (r.player1_id !== me) return;
-    if (r.status !== 'waiting') return;
-    if (r.player2_id) return;
+  // ── Heartbeat: keep room alive while tab is open ──────────────
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) return;
-
-    // Get the access token from the Supabase client session cache
-    const storageKey = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
-    let accessToken = key; // fallback to anon key
+  const sendHeartbeat = useCallback(async () => {
+    if (!roomId) return;
     try {
-      const raw = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.access_token) accessToken = parsed.access_token;
-      }
-    } catch { /* use anon key */ }
+      await supabaseClient.rpc('lobby_heartbeat', { input_room_id: roomId });
+    } catch { /* non-critical */ }
+  }, [roomId]);
 
-    fetch(`${url}/rest/v1/rpc/cancel_lobby_room`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': key,
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ input_room_id: r.id }),
-      keepalive: true,
-    }).catch(() => {});
+  useEffect(() => {
+    // Start heartbeat once we have room data
+    if (!room || room.status !== 'waiting') return;
+
+    // Immediately send one heartbeat
+    sendHeartbeat();
+
+    heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    };
+  }, [room?.id, room?.status, sendHeartbeat]);
+
+  // ── Cleanup stale rooms periodically (client-side trigger) ────
+  useEffect(() => {
+    // Run cleanup once on mount & every 30s to catch stale rooms
+    const runCleanup = async () => {
+      try {
+        await supabaseClient.rpc('cleanup_stale_lobby_rooms', { input_timeout_seconds: 60 });
+      } catch { /* non-critical */ }
+    };
+
+    runCleanup();
+    const cleanupInterval = setInterval(runCleanup, 30_000);
+    return () => clearInterval(cleanupInterval);
   }, []);
 
-  // Auto-cancel room when host closes tab / navigates away
+  // ── On tab close/refresh: mark presence as "left" with timestamp ──
   useEffect(() => {
-    const onBeforeUnload = () => silentCancel();
-    window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('pagehide', onBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('pagehide', onBeforeUnload);
+    const onLeaving = () => {
+      // Mark the time we left so we can check grace period on return
+      markLobbyLeft();
     };
-  }, [silentCancel]);
 
+    window.addEventListener('beforeunload', onLeaving);
+    window.addEventListener('pagehide', onLeaving);
+    return () => {
+      window.removeEventListener('beforeunload', onLeaving);
+      window.removeEventListener('pagehide', onLeaving);
+    };
+  }, []);
+
+  // ── On visibility change: resume heartbeat when tab becomes visible ──
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && roomRef.current?.status === 'waiting') {
+        // Immediately send a heartbeat when tab becomes visible again
+        sendHeartbeat();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [sendHeartbeat]);
+
+  // ── Main data fetch + realtime subscription ───────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -88,17 +149,46 @@ export default function LobbyRoomPage() {
         setLoading(true);
         const { data: sessionData } = await supabaseClient.auth.getSession();
         if (!sessionData.session) { router.push('/'); return; }
-        setMeId(sessionData.session.user.id);
+        const myId = sessionData.session.user.id;
+        setMeId(myId);
+
         const { data, error } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).maybeSingle();
         if (error) throw error;
-        if (!data) throw new Error('Lobby not found');
-        if (!cancelled) setRoom(data);
+        if (!data) {
+          // Room doesn't exist — check if it was within grace period
+          const presence = getLobbyPresence();
+          if (presence?.roomId === roomId) {
+            clearLobbyPresence();
+          }
+          throw new Error('Lobby not found — it may have expired.');
+        }
+
+        if (!cancelled) {
+          setRoom(data);
+
+          // Determine role and save presence
+          const isHost = data.player1_id === myId;
+          saveLobbyPresence(roomId, isHost ? 'host' : 'guest');
+
+          // Check if we're reconnecting after a tab close
+          const presence = getLobbyPresence();
+          if (presence?.leftAt) {
+            const elapsed = Date.now() - presence.leftAt;
+            if (elapsed < GRACE_PERIOD_MS) {
+              setReconnected(true);
+              setTimeout(() => setReconnected(false), 3000);
+            }
+          }
+          // Clear leftAt since we're back
+          saveLobbyPresence(roomId, isHost ? 'host' : 'guest');
+        }
       } catch (err: any) {
         if (!cancelled) setError(err?.message || 'Failed to load lobby');
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
+
     const channel = supabaseClient
       .channel(`lobby-room-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, (payload: any) => {
@@ -106,14 +196,17 @@ export default function LobbyRoomPage() {
         if (!updated) return;
         setRoom(updated);
         if (updated.status === 'ongoing' && updated.player2_id) {
+          clearLobbyPresence();
           router.replace(`/game/${updated.id}`);
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, () => {
-        // Room was deleted (host cancelled) — show cancelled UI
+        // Room was deleted (host cancelled or heartbeat expired) — show cancelled UI
+        clearLobbyPresence();
         setRoomCancelled(true);
       })
       .subscribe();
+
     return () => { cancelled = true; supabaseClient.removeChannel(channel); };
   }, [roomId, router]);
 
@@ -123,6 +216,7 @@ export default function LobbyRoomPage() {
       setShowConfirm(null);
       const { error } = await supabaseClient.rpc('cancel_lobby_room', { input_room_id: room.id });
       if (error) throw error;
+      clearLobbyPresence();
       setRoomCancelled(true);
     } catch (err: any) { setError(err?.message || 'Failed to cancel room'); }
   }
@@ -133,6 +227,7 @@ export default function LobbyRoomPage() {
       setShowConfirm(null);
       const { error } = await supabaseClient.rpc('leave_lobby_room', { input_room_id: room.id });
       if (error) throw error;
+      clearLobbyPresence();
       setLeftRoom(true);
     } catch (err: any) { setError(err?.message || 'Failed to leave room'); }
   }
@@ -156,6 +251,7 @@ export default function LobbyRoomPage() {
       setStartLoading(true);
       const { error } = await supabaseClient.rpc('start_lobby_room', { input_room_id: room.id });
       if (error) throw error;
+      clearLobbyPresence();
     } catch (err: any) {
       const msg = String(err?.message || 'Failed to start game');
       setError(msg.toLowerCase().includes('players_not_ready') ? 'All players must be READY first' : msg);
@@ -188,7 +284,7 @@ export default function LobbyRoomPage() {
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '24px', lineHeight: 1.5 }}>
             {meId && room?.player1_id === meId
               ? 'You have cancelled this room.'
-              : 'The host has cancelled this room.'}
+              : 'The host has cancelled this room or it has expired.'}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <button
@@ -272,6 +368,25 @@ export default function LobbyRoomPage() {
               ? 'Your room is visible in the lobby. When both players are ready, the host starts the game.'
               : 'Share the room code. When both players are ready, the host starts the game.'}
           </p>
+
+          {/* Reconnection notice */}
+          {reconnected && (
+            <div className="animate-fade-in" style={{
+              marginBottom: '16px',
+              padding: '12px 18px',
+              borderRadius: '12px',
+              background: 'rgba(16,185,129,0.08)',
+              border: '1px solid rgba(16,185,129,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '0.88rem',
+              color: 'var(--color-success)',
+            }}>
+              <span style={{ fontSize: '1.1rem' }}>🔄</span>
+              <span>Reconnected to room successfully!</span>
+            </div>
+          )}
 
           {error && (
             <div className="card" style={{ borderColor: 'rgba(239,68,68,0.3)', marginBottom: '20px', padding: '14px 20px', color: '#ef4444', fontSize: '0.9rem' }}>
