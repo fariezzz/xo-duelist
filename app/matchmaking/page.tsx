@@ -6,12 +6,14 @@ import Navbar from '../../components/Navbar';
 import MatchFoundModal from '../../components/notifications/MatchFoundModal';
 import useSound from 'use-sound';
 import { useScopedSessionLock } from '../../hooks/useScopedSessionLock';
+import { getRandomPersona } from '../../lib/aiPlayer';
 
 export default function MatchmakingPage() {
   const router = useRouter();
   const lock = useScopedSessionLock('arena');
   const [joined, setJoined] = useState(false);
   const [time, setTime] = useState(0);
+  const [aiLoading, setAiLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const matchingRef = useRef(false);
@@ -29,6 +31,7 @@ export default function MatchmakingPage() {
     oppName: string;
     oppElo: number;
     oppAvatarUrl: string | null;
+    isVsAi?: boolean;
   } | null>(null);
 
   // Keep timeRef in sync
@@ -170,8 +173,41 @@ export default function MatchmakingPage() {
     router.push('/dashboard');
   }
 
+  async function handleFightAI() {
+    if (aiLoading || redirectedRef.current) return;
+    setAiLoading(true);
+    try {
+      // Remove from queue first
+      if (meId) await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
+      const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
+      if (rpcErr) throw rpcErr;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.room_id) throw new Error('No room created');
+      redirectedRef.current = true;
+      // Show match found modal with AI opponent persona
+      const persona = getRandomPersona();
+      const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId!).single();
+      setMatchFound({
+        gameId: row.room_id,
+        myName: myProfile?.username ?? 'You',
+        myElo: myProfile?.elo_rating ?? 1000,
+        myAvatarUrl: myProfile?.avatar_url ?? null,
+        oppName: persona,
+        oppElo: myProfile?.elo_rating ?? 1000,
+        oppAvatarUrl: null,
+        isVsAi: true,
+      });
+      playMatchFound();
+    } catch (err) {
+      console.error('Failed to create AI match:', err);
+      setAiLoading(false);
+      redirectedRef.current = false;
+    }
+  }
+
   const rangeText = time > 60 ? 'Any ELO' : time > 30 ? '±400 ELO' : '±200 ELO';
   const pct = Math.min(100, (time / 60) * 100);
+  const showAiFallback = time >= 25 && !matchFound && !redirectedRef.current;
 
   return (
     <>
@@ -291,6 +327,25 @@ export default function MatchmakingPage() {
           <button className="btn btn-danger" onClick={cancel} style={{ width: '100%' }}>
             ✕ Cancel Search
           </button>
+
+          {showAiFallback && (
+            <div style={{ marginTop: '16px', textAlign: 'center' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '8px', fontFamily: 'var(--font-heading)' }}>
+                Match taking too long?
+              </div>
+              <button
+                className="btn btn-secondary"
+                onClick={handleFightAI}
+                disabled={aiLoading}
+                style={{ width: '100%', borderColor: 'rgba(124,58,237,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                🤖 {aiLoading ? 'Creating AI match...' : 'Fight AI Instead'}
+              </button>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '6px', opacity: 0.7 }}>
+                AI matches give reduced ELO
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -303,6 +358,7 @@ export default function MatchmakingPage() {
         oppName={matchFound?.oppName ?? ''}
         oppElo={matchFound?.oppElo ?? 0}
         oppAvatarUrl={matchFound?.oppAvatarUrl}
+        isVsAi={matchFound?.isVsAi}
         onCountdownDone={() => {
           if (matchFound) router.push(`/game/${matchFound.gameId}`);
         }}

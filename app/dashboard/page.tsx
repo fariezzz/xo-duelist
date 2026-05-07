@@ -12,6 +12,24 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [rank, setRank] = useState<{ position: number; total: number } | null>(null);
   const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  async function handleChallengeAI() {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
+      if (rpcErr) throw rpcErr;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row?.room_id) {
+        router.push(`/game/${row.room_id}`);
+      }
+    } catch (err: any) {
+      console.error('Failed to create AI match:', err);
+      setError(err?.message || 'Failed to create AI match');
+      setAiLoading(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -389,6 +407,45 @@ export default function DashboardPage() {
             >
               ⚔️ Find Match
             </button>
+
+            {/* VS AI Card */}
+            <button
+              className="card card-hover"
+              onClick={handleChallengeAI}
+              disabled={aiLoading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                width: '100%',
+                textAlign: 'left',
+                cursor: aiLoading ? 'wait' : 'pointer',
+                border: '1px solid rgba(124,58,237,0.25)',
+                background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(245,158,11,0.05))',
+                boxShadow: '0 0 20px rgba(124,58,237,0.08)',
+                padding: '18px 20px',
+              }}
+            >
+              <span style={{ fontSize: '2rem', flexShrink: 0 }}>🤖</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  {aiLoading ? 'Creating match...' : 'VS AI'}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  Instant duel against adaptive AI
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(124,58,237,0.15)', color: '#a78bfa', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
+                    Instant match
+                  </span>
+                  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
+                    Reduced ELO
+                  </span>
+                </div>
+              </div>
+              <span style={{ color: 'var(--text-muted)', fontSize: '1.2rem', flexShrink: 0 }}>›</span>
+            </button>
+
             <button
               className="btn btn-secondary btn-lg"
               onClick={() => router.push('/lobby')}

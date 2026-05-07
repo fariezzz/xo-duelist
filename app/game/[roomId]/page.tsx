@@ -23,6 +23,7 @@ import {
   tickCurse, isOneStepFromWin, getRandomEmptyCell, safeShuffle,
 } from '../../../lib/mechanics';
 import useSound from 'use-sound';
+import { computeAIMove, getRandomPersona } from '../../../lib/aiPlayer';
 
 import LiveChat from '../../../components/LiveChat';
 
@@ -85,6 +86,8 @@ export default function GameRoom() {
   const [fumbleWarning, setFumbleWarning] = useState(false);
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false);
   const turnSubmitLockRef = useRef(false);
+  const aiMoveLockRef = useRef(false);
+  const [aiThinking, setAiThinking] = useState(false);
 
   /* Sounds */
   const [playPlaceX] = useSound('/sounds/place-x.wav', { volume: 0.6 });
@@ -114,15 +117,25 @@ export default function GameRoom() {
 
       // Fetch player profiles for display
       const { data: p1Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player1_id).single();
-      const { data: p2Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player2_id).single();
-      setPlayerProfiles({
-        p1: { username: p1Profile?.username ?? 'Player 1', elo: p1Profile?.elo_rating ?? 1000, avatarUrl: p1Profile?.avatar_url ?? null },
-        p2: { username: p2Profile?.username ?? 'Player 2', elo: p2Profile?.elo_rating ?? 1000, avatarUrl: p2Profile?.avatar_url ?? null },
-      });
+      if (data.is_vs_ai) {
+        // AI opponent: display with random persona name and player's ELO
+        const persona = getRandomPersona();
+        setPlayerProfiles({
+          p1: { username: p1Profile?.username ?? 'Player 1', elo: p1Profile?.elo_rating ?? 1000, avatarUrl: p1Profile?.avatar_url ?? null },
+          p2: { username: persona, elo: p1Profile?.elo_rating ?? 1000, avatarUrl: null },
+        });
+      } else {
+        const { data: p2Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player2_id).single();
+        setPlayerProfiles({
+          p1: { username: p1Profile?.username ?? 'Player 1', elo: p1Profile?.elo_rating ?? 1000, avatarUrl: p1Profile?.avatar_url ?? null },
+          p2: { username: p2Profile?.username ?? 'Player 2', elo: p2Profile?.elo_rating ?? 1000, avatarUrl: p2Profile?.avatar_url ?? null },
+        });
+      }
 
       // Show starting banner
       const sym = data.player1_id === uid ? 'X' : 'O';
-      showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}`, icon: '🎮', duration: 2500 });
+      const aiLabel = data.is_vs_ai ? ' (VS AI)' : '';
+      showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: '🎮', duration: 2500 });
     })();
   }, [roomId, router]);
 
@@ -174,6 +187,89 @@ export default function GameRoom() {
     return () => { supabaseClient.removeChannel(channel); };
   }, [roomId, meId]);
 
+  /* ── AI Auto-Move ────────────────────────────── */
+  useEffect(() => {
+    if (!room || !meId) return;
+    if (!room.is_vs_ai) return;
+    if (room.status !== 'ongoing') return;
+    // AI's turn = current_turn is the bot (player2_id)
+    if (room.current_turn === meId) return;
+    if (aiMoveLockRef.current) return;
+
+    aiMoveLockRef.current = true;
+    setAiThinking(true);
+
+    const delay = 600 + Math.random() * 800; // 600-1400ms
+    const timer = setTimeout(async () => {
+      try {
+        // Re-read latest room state to avoid stale data
+        const { data: freshRoom } = await supabaseClient
+          .from('game_rooms')
+          .select('*')
+          .eq('id', roomId)
+          .single();
+        if (!freshRoom || freshRoom.status !== 'ongoing' || freshRoom.current_turn === meId) {
+          return;
+        }
+
+        const currentBoard: BoardCell[] = typeof freshRoom.board_state === 'string'
+          ? JSON.parse(freshRoom.board_state)
+          : freshRoom.board_state;
+
+        const aiSymbol: 'X' | 'O' = freshRoom.player1_id === meId ? 'O' : 'X';
+        const moveIndex = computeAIMove(currentBoard as any, aiSymbol);
+        if (moveIndex === null) return;
+
+        const newBoard = [...currentBoard] as BoardCell[];
+        newBoard[moveIndex] = aiSymbol;
+
+        const tc = (freshRoom.turn_count ?? 0) + 1;
+        const nsa = freshRoom.next_shuffle_at ?? 12;
+        const effectiveNsa = tc <= 12 ? Math.max(nsa, 12) : nsa;
+        const update: any = {
+          board_state: newBoard,
+          turn_count: tc,
+          current_turn: meId,
+          last_move_at: new Date().toISOString(),
+        };
+
+        // Check win/draw
+        const res = checkWinner4(newBoard as any);
+        if (res.symbol) {
+          update.status = 'finished';
+          update.winner_id = freshRoom.player2_id; // AI wins
+        } else if (isDraw(newBoard as any)) {
+          update.status = 'finished';
+          update.winner_id = null;
+        }
+
+        // Shuffle check (if game not finished)
+        if (!update.status && tc >= effectiveNsa) {
+          const pc = typeof freshRoom.power_cells === 'string' ? JSON.parse(freshRoom.power_cells) : (freshRoom.power_cells || []);
+          const cc = typeof freshRoom.curse_cells === 'string' ? JSON.parse(freshRoom.curse_cells) : (freshRoom.curse_cells || []);
+          const s = safeShuffle(newBoard, pc, cc);
+          update.board_state = s.board;
+          update.power_cells = JSON.stringify(s.power_cells);
+          update.curse_cells = JSON.stringify(s.curse_cells);
+          update.next_shuffle_at = effectiveNsa + 12;
+        }
+
+        await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
+      } catch (err) {
+        console.error('AI move failed:', err);
+      } finally {
+        aiMoveLockRef.current = false;
+        setAiThinking(false);
+      }
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+      aiMoveLockRef.current = false;
+      setAiThinking(false);
+    };
+  }, [room?.current_turn, room?.status, room?.is_vs_ai, meId, roomId]);
+
   /* ── Handle game finished (fetch ELO data) ──── */
   const handleGameFinished = useCallback(async (newRow: any) => {
     if (lastStatusRef.current === 'finished') return;
@@ -210,9 +306,13 @@ export default function GameRoom() {
         .maybeSingle();
 
       // Opponent name
-      const oppId = newRow.player1_id === meId ? newRow.player2_id : newRow.player1_id;
-      const { data: oppProfile } = await supabaseClient.from('profiles').select('username').eq('id', oppId).single();
-      opponentName = oppProfile?.username;
+      if (newRow.is_vs_ai) {
+        opponentName = 'AI Duelist';
+      } else {
+        const oppId = newRow.player1_id === meId ? newRow.player2_id : newRow.player1_id;
+        const { data: oppProfile } = await supabaseClient.from('profiles').select('username').eq('id', oppId).single();
+        opponentName = oppProfile?.username;
+      }
 
       if (!isLobbyRoom && history) {
         const isWinner = history.winner_id === meId;
@@ -541,7 +641,9 @@ export default function GameRoom() {
                 }}
               >
                 {room.status === 'ongoing'
-                  ? isMyTurn ? 'Your Turn' : "Opponent's Turn"
+                  ? isMyTurn
+                    ? 'Your Turn'
+                    : (room.is_vs_ai && aiThinking ? '🤖 AI is thinking...' : "Opponent's Turn")
                   : 'Game Over'}
               </div>
 
@@ -715,10 +817,11 @@ export default function GameRoom() {
         eloChange={resultData?.eloChange}
         newElo={resultData?.newElo}
         opponentName={resultData?.opponentName}
+        isVsAi={!!room?.is_vs_ai}
         onPlayAgain={() => router.push('/matchmaking')}
         onDashboard={() => router.push('/dashboard')}
       />
-      <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />
+      {!room?.is_vs_ai && <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />}
     </>
   );
 }

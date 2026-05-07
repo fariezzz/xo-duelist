@@ -15,6 +15,7 @@ interface Props {
   title?: string;
   message?: string;
   onClose?: () => void;
+  isVsAi?: boolean;
 }
 
 const OUTCOME_CONFIG = {
@@ -64,6 +65,7 @@ export default function ResultModal({
   title,
   message,
   onClose,
+  isVsAi,
 }: Props) {
   if (!open) return null;
 
@@ -111,6 +113,13 @@ export default function ResultModal({
         {/* ELO change */}
         {eloStr && (
           <div className="result-elo-change" style={{ color: cfg.eloColor }}>{eloStr}</div>
+        )}
+
+        {/* VS AI reduced ELO note */}
+        {isVsAi && (
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px', fontFamily: 'var(--font-heading)' }}>
+            🤖 VS AI • Reduced ELO
+          </div>
         )}
 
         {/* New total */}

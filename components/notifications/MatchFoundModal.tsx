@@ -10,6 +10,7 @@ interface Props {
   oppElo: number;
   oppAvatarUrl?: string | null;
   onCountdownDone: () => void;
+  isVsAi?: boolean;
 }
 
 export default function MatchFoundModal({
@@ -21,6 +22,7 @@ export default function MatchFoundModal({
   oppElo,
   oppAvatarUrl,
   onCountdownDone,
+  isVsAi,
 }: Props) {
   const [count, setCount] = useState(3);
   const onDoneRef = useRef(onCountdownDone);
@@ -89,7 +91,7 @@ export default function MatchFoundModal({
             marginBottom: "24px",
           }}
         >
-          ⚔️ Match Found!
+          {isVsAi ? '🤖 AI Match Found!' : '⚔️ Match Found!'}
         </div>
 
         {/* VS Layout */}
@@ -191,7 +193,7 @@ export default function MatchFoundModal({
               {oppAvatarUrl ? (
                 <img src={oppAvatarUrl} alt={oppName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                "🛡️"
+                isVsAi ? "🤖" : "🛡️"
               )}
             </div>
             <div
@@ -226,11 +228,31 @@ export default function MatchFoundModal({
           style={{
             fontSize: "0.8rem",
             color: "var(--text-muted)",
-            marginBottom: "24px",
+            marginBottom: isVsAi ? '12px' : '24px',
           }}
         >
           {diffLabel}
         </div>
+
+        {/* Reduced ELO badge for AI matches */}
+        {isVsAi && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 14px',
+            borderRadius: '6px',
+            background: 'rgba(245,158,11,0.12)',
+            border: '1px solid rgba(245,158,11,0.2)',
+            marginBottom: '24px',
+            fontSize: '0.78rem',
+            fontFamily: 'var(--font-heading)',
+            fontWeight: 600,
+            color: '#fbbf24',
+          }}>
+            ⚡ Reduced ELO Reward
+          </div>
+        )}
 
         {/* Countdown */}
         <div
