@@ -77,7 +77,7 @@ export default function ProfilePage() {
             </h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "20px" }}>{error}</p>
             <button className="btn btn-primary" onClick={() => router.push("/dashboard")}>
-              ← Back to Dashboard
+              ← Back to Home
             </button>
           </div>
         </div>

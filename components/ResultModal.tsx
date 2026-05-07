@@ -145,7 +145,7 @@ export default function ResultModal({
           )}
           {onDashboard && (
             <button className="btn btn-ghost" onClick={onDashboard} style={{ width: "100%" }}>
-              ← Back to Dashboard
+              ← Back to Home
             </button>
           )}
           {onClose && !onPlayAgain && !onDashboard && (

@@ -258,7 +258,7 @@ export default function TrainingPage() {
               onClick={() => router.push('/dashboard')}
               style={{ minWidth: '140px' }}
             >
-              ← Dashboard
+              ← Home
             </button>
           </div>
         </div>

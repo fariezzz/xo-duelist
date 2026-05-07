@@ -4,6 +4,9 @@ import { supabaseClient } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Navbar from '../../components/Navbar';
 import TierBadge from '../../components/TierBadge';
+import MatchFoundModal from '../../components/notifications/MatchFoundModal';
+import { getRandomPersona } from '../../lib/aiPlayer';
+import useSound from 'use-sound';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -13,6 +16,15 @@ export default function DashboardPage() {
   const [rank, setRank] = useState<{ position: number; total: number } | null>(null);
   const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiMatchFound, setAiMatchFound] = useState<{
+    gameId: string;
+    myName: string;
+    myElo: number;
+    myAvatarUrl: string | null;
+    oppName: string;
+    oppElo: number;
+  } | null>(null);
+  const [playMatchFound] = useSound('/sounds/match-found.mp3', { volume: 0.7 });
 
   async function handleChallengeAI() {
     if (aiLoading) return;
@@ -21,9 +33,21 @@ export default function DashboardPage() {
       const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
       if (rpcErr) throw rpcErr;
       const row = Array.isArray(data) ? data[0] : data;
-      if (row?.room_id) {
-        router.push(`/game/${row.room_id}`);
-      }
+      if (!row?.room_id) throw new Error('No room created');
+      // Fetch player profile for modal
+      const session = await supabaseClient.auth.getSession();
+      const uid = session.data.session?.user.id;
+      const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', uid!).single();
+      const persona = getRandomPersona();
+      setAiMatchFound({
+        gameId: row.room_id,
+        myName: myProfile?.username ?? 'You',
+        myElo: myProfile?.elo_rating ?? 1000,
+        myAvatarUrl: myProfile?.avatar_url ?? null,
+        oppName: persona,
+        oppElo: myProfile?.elo_rating ?? 1000,
+      });
+      playMatchFound();
     } catch (err: any) {
       console.error('Failed to create AI match:', err);
       setError(err?.message || 'Failed to create AI match');
@@ -519,6 +543,24 @@ export default function DashboardPage() {
 
         </div>
       </div>
+
+      {/* AI Match Found Modal */}
+      <MatchFoundModal
+        open={!!aiMatchFound}
+        myName={aiMatchFound?.myName ?? ''}
+        myElo={aiMatchFound?.myElo ?? 0}
+        myAvatarUrl={aiMatchFound?.myAvatarUrl}
+        oppName={aiMatchFound?.oppName ?? ''}
+        oppElo={aiMatchFound?.oppElo ?? 0}
+        oppAvatarUrl={null}
+        isVsAi
+        onCountdownDone={() => {
+          if (aiMatchFound) {
+            const personaParam = encodeURIComponent(aiMatchFound.oppName);
+            router.push(`/game/${aiMatchFound.gameId}?origin=dashboard&persona=${personaParam}`);
+          }
+        }}
+      />
     </>
   );
 }

@@ -360,7 +360,12 @@ export default function MatchmakingPage() {
         oppAvatarUrl={matchFound?.oppAvatarUrl}
         isVsAi={matchFound?.isVsAi}
         onCountdownDone={() => {
-          if (matchFound) router.push(`/game/${matchFound.gameId}`);
+          if (matchFound) {
+            const suffix = matchFound.isVsAi 
+              ? `?origin=matchmaking&persona=${encodeURIComponent(matchFound.oppName)}` 
+              : '';
+            router.push(`/game/${matchFound.gameId}${suffix}`);
+          }
         }}
       />
     </>

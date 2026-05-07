@@ -310,7 +310,7 @@ export default function Navbar() {
                   }}
                 >
                   <DropdownItem icon="👤" label="My Profile" onClick={() => { setDropdownOpen(false); router.push('/profile'); }} />
-                  <DropdownItem icon="🏠" label="Dashboard" onClick={() => { setDropdownOpen(false); router.push('/dashboard'); }} />
+                  <DropdownItem icon="🏠" label="Home" onClick={() => { setDropdownOpen(false); router.push('/dashboard'); }} />
                   <DropdownItem icon="📜" label="Match History" onClick={() => { setDropdownOpen(false); router.push('/history'); }} />
                   <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
                   <DropdownItem icon="🚪" label="Logout" onClick={signOut} danger />

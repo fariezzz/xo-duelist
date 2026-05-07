@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
-import LiveChat from '../../../components/LiveChat';
 
 const HEARTBEAT_INTERVAL_MS = 10_000; // Send heartbeat every 10s
 const GRACE_PERIOD_MS = 60_000; // 1 minute grace period on tab close
@@ -292,14 +291,14 @@ export default function LobbyRoomPage() {
               onClick={() => router.push('/lobby')}
               style={{ width: '100%' }}
             >
-              🏠 Back to Lobby
+              Back to Lobby
             </button>
             <button
               className="btn btn-ghost"
               onClick={() => router.push('/dashboard')}
               style={{ width: '100%' }}
             >
-              📊 Dashboard
+              Home
             </button>
           </div>
         </div>
@@ -323,14 +322,14 @@ export default function LobbyRoomPage() {
               onClick={() => router.push('/lobby')}
               style={{ width: '100%' }}
             >
-              🏠 Back to Lobby
+              Back to Lobby
             </button>
             <button
               className="btn btn-ghost"
               onClick={() => router.push('/dashboard')}
               style={{ width: '100%' }}
             >
-              📊 Dashboard
+              Home
             </button>
           </div>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { supabaseClient } from '../../../lib/supabase';
 import Board from '../../../components/Board';
 import Timer from '../../../components/Timer';
@@ -9,6 +9,7 @@ import ResultModal from '../../../components/ResultModal';
 import type { ResultOutcome } from '../../../components/ResultModal';
 import GameBanner from '../../../components/notifications/GameBanner';
 import ConnectionStatus from '../../../components/notifications/ConnectionStatus';
+import MatchFoundModal from '../../../components/notifications/MatchFoundModal';
 import RankUpOverlay from '../../../components/notifications/RankUpOverlay';
 import GameHUD from '../../../components/GameHUD';
 import SkillCard from '../../../components/SkillCard';
@@ -23,7 +24,7 @@ import {
   tickCurse, isOneStepFromWin, getRandomEmptyCell, safeShuffle,
 } from '../../../lib/mechanics';
 import useSound from 'use-sound';
-import { computeAIMove, getRandomPersona } from '../../../lib/aiPlayer';
+import { computeAIMove, getRandomPersona, decideAISkill } from '../../../lib/aiPlayer';
 
 import LiveChat from '../../../components/LiveChat';
 
@@ -40,6 +41,8 @@ export default function GameRoom() {
   const params = useParams();
   const roomId = params?.roomId as string;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const aiOrigin = searchParams.get('origin'); // 'dashboard' or 'matchmaking'
   const { showToast, showBanner, banner, connectionStatus, setConnectionStatus } = useNotification();
   const lock = useScopedSessionLock('arena');
 
@@ -58,6 +61,15 @@ export default function GameRoom() {
   const [turnTimerKey, setTurnTimerKey] = useState(0);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
   const [playerProfiles, setPlayerProfiles] = useState<{ p1: { username: string; elo: number; avatarUrl: string | null }; p2: { username: string; elo: number; avatarUrl: string | null } } | null>(null);
+  const [aiMatchFound, setAiMatchFound] = useState<{
+    gameId: string;
+    myName: string;
+    myElo: number;
+    myAvatarUrl: string | null;
+    oppName: string;
+    oppElo: number;
+  } | null>(null);
+  const [playMatchFound] = useSound('/sounds/match-found.mp3', { volume: 0.7 });
   const lastStatusRef = useRef<string | null>(null);
   const timerWarningShown = useRef(false);
 
@@ -118,8 +130,8 @@ export default function GameRoom() {
       // Fetch player profiles for display
       const { data: p1Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player1_id).single();
       if (data.is_vs_ai) {
-        // AI opponent: display with random persona name and player's ELO
-        const persona = getRandomPersona();
+        // AI opponent: display with provided persona name or fallback, and player's ELO
+        const persona = searchParams.get('persona') || getRandomPersona();
         setPlayerProfiles({
           p1: { username: p1Profile?.username ?? 'Player 1', elo: p1Profile?.elo_rating ?? 1000, avatarUrl: p1Profile?.avatar_url ?? null },
           p2: { username: persona, elo: p1Profile?.elo_rating ?? 1000, avatarUrl: null },
@@ -192,66 +204,189 @@ export default function GameRoom() {
     if (!room || !meId) return;
     if (!room.is_vs_ai) return;
     if (room.status !== 'ongoing') return;
-    // AI's turn = current_turn is the bot (player2_id)
     if (room.current_turn === meId) return;
     if (aiMoveLockRef.current) return;
 
     aiMoveLockRef.current = true;
     setAiThinking(true);
 
-    const delay = 600 + Math.random() * 800; // 600-1400ms
+    const delay = 700 + Math.random() * 900; // 700-1600ms
     const timer = setTimeout(async () => {
       try {
-        // Re-read latest room state to avoid stale data
-        const { data: freshRoom } = await supabaseClient
+        const { data: fr } = await supabaseClient
           .from('game_rooms')
           .select('*')
           .eq('id', roomId)
           .single();
-        if (!freshRoom || freshRoom.status !== 'ongoing' || freshRoom.current_turn === meId) {
+        if (!fr || fr.status !== 'ongoing' || fr.current_turn === meId) return;
+
+        const currentBoard: BoardCell[] = typeof fr.board_state === 'string'
+          ? JSON.parse(fr.board_state) : fr.board_state;
+
+        // AI is always the non-human player
+        const aiIsP1 = fr.player1_id !== meId;
+        const aiSymbol: 'X' | 'O' = aiIsP1 ? 'X' : 'O';
+        const playerSymbol: 'X' | 'O' = aiIsP1 ? 'O' : 'X';
+        const aiSkillKey = aiIsP1 ? 'player1_skill' : 'player2_skill';
+        const aiCurseKey = aiIsP1 ? 'player1_curse' : 'player2_curse';
+        const aiSkill: SkillType | null = fr[aiSkillKey] ?? null;
+        const aiCurseRaw = fr[aiCurseKey];
+        const aiCurse: PlayerCurse | null = aiCurseRaw
+          ? (typeof aiCurseRaw === 'string' ? JSON.parse(aiCurseRaw) : aiCurseRaw)
+          : null;
+
+        const pc: PowerCell[] = typeof fr.power_cells === 'string'
+          ? JSON.parse(fr.power_cells) : (fr.power_cells || []);
+        const cc: CurseCell[] = typeof fr.curse_cells === 'string'
+          ? JSON.parse(fr.curse_cells) : (fr.curse_cells || []);
+        const tc = fr.turn_count ?? 0;
+        const nsa = fr.next_shuffle_at ?? 12;
+        const effNsa = tc < 12 ? Math.max(nsa, 12) : nsa;
+
+        const update: any = {
+          last_move_at: new Date().toISOString(),
+          current_turn: meId,
+        };
+        const newTc = tc + 1;
+        update.turn_count = newTc;
+        if (tc < 12 && nsa < 12) update.next_shuffle_at = 12;
+
+        // ── Try skill first ──
+        const skillDecision = decideAISkill(aiSkill, currentBoard, aiSymbol, pc, tc);
+
+        if (skillDecision.useSkill) {
+          const { skill: usedSkill, target: skillTarget } = skillDecision;
+          const newBoard = [...currentBoard] as BoardCell[];
+
+          if (usedSkill === 'BARRIER') {
+            newBoard[skillTarget] = 'BARRIER';
+          } else if (usedSkill === 'OVERWRITE') {
+            newBoard[skillTarget] = aiSymbol;
+          } else if (usedSkill === 'BOMB') {
+            newBoard[skillTarget] = null;
+          }
+
+          update.board_state = newBoard;
+          update[aiSkillKey] = null; // consume skill
+
+          // Win check after OVERWRITE
+          if (usedSkill === 'OVERWRITE') {
+            const res = checkWinner4(newBoard as any);
+            if (res.symbol === aiSymbol) {
+              update.status = 'finished';
+              update.winner_id = fr.current_turn; // AI's id
+            }
+          }
+
+          // Shuffle check
+          if (!update.status && newTc >= effNsa) {
+            const s = safeShuffle(newBoard, pc, cc);
+            update.board_state = s.board;
+            update.power_cells = JSON.stringify(s.power_cells);
+            update.curse_cells = JSON.stringify(s.curse_cells);
+            update.next_shuffle_at = effNsa + 12;
+          }
+
+          // Tick AI curse
+          if (aiCurse) {
+            const ticked = tickCurse(aiCurse);
+            update[aiCurseKey] = ticked ? JSON.stringify(ticked) : null;
+          }
+
+          await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
+
+          // Show banner to human
+          const meta = SKILL_META[usedSkill];
+          showBannerRef.current({
+            type: 'warning',
+            message: `🤖 AI used ${meta.icon} ${meta.name}!`,
+            icon: '🤖',
+            duration: 3000,
+          });
           return;
         }
 
-        const currentBoard: BoardCell[] = typeof freshRoom.board_state === 'string'
-          ? JSON.parse(freshRoom.board_state)
-          : freshRoom.board_state;
+        // ── Normal move ──
+        let targetCell = computeAIMove(currentBoard as any, aiSymbol);
+        if (targetCell === null) return;
 
-        const aiSymbol: 'X' | 'O' = freshRoom.player1_id === meId ? 'O' : 'X';
-        const moveIndex = computeAIMove(currentBoard as any, aiSymbol);
-        if (moveIndex === null) return;
+        // FUMBLE: randomize target (unless AI is 1 step from winning)
+        if (aiCurse?.type === 'FUMBLE' && aiCurse.turns_remaining > 0) {
+          if (!isOneStepFromWin(currentBoard, aiSymbol)) {
+            const rnd = getRandomEmptyCell(currentBoard);
+            if (rnd !== null && rnd !== targetCell) targetCell = rnd;
+          }
+        }
 
         const newBoard = [...currentBoard] as BoardCell[];
-        newBoard[moveIndex] = aiSymbol;
+        newBoard[targetCell] = aiSymbol;
+        update.board_state = newBoard;
 
-        const tc = (freshRoom.turn_count ?? 0) + 1;
-        const nsa = freshRoom.next_shuffle_at ?? 12;
-        const effectiveNsa = tc <= 12 ? Math.max(nsa, 12) : nsa;
-        const update: any = {
-          board_state: newBoard,
-          turn_count: tc,
-          current_turn: meId,
-          last_move_at: new Date().toISOString(),
-        };
+        // Power Cell check
+        const newPc = [...pc];
+        const hitPc = newPc.find(p => p.index === targetCell && !p.claimed);
+        if (hitPc) {
+          hitPc.claimed = true;
+          update.power_cells = JSON.stringify(newPc);
+          if (!aiSkill) {
+            const skill = getRandomSkill();
+            update[aiSkillKey] = skill;
+            // Show power cell banner to human
+            showBannerRef.current({
+              type: 'info',
+              message: `🤖 AI claimed a Power Cell! (${SKILL_META[skill].icon} ${SKILL_META[skill].name})`,
+              icon: '✦',
+              duration: 2500,
+            });
+          }
+        }
+
+        // Curse Cell check
+        const newCc = [...cc];
+        const hitCc = newCc.find(c => c.index === targetCell && !c.triggered);
+        if (hitCc && !aiCurse) {
+          hitCc.triggered = true;
+          update.curse_cells = JSON.stringify(newCc);
+          let curseType = getRandomCurse();
+          if (curseType === 'FUMBLE' && isOneStepFromWin(newBoard, aiSymbol)) {
+            curseType = 'SLOW';
+          }
+          const curse = buildCurse(curseType);
+          update[aiCurseKey] = JSON.stringify(curse);
+          showBannerRef.current({
+            type: 'info',
+            message: `🤖 AI got cursed! ${CURSE_META[curseType].name}`,
+            icon: '💀',
+            duration: 2500,
+          });
+        }
+
+        // Tick AI curse (if not just applied)
+        if (aiCurse && !hitCc) {
+          const ticked = tickCurse(aiCurse);
+          update[aiCurseKey] = ticked ? JSON.stringify(ticked) : null;
+        }
 
         // Check win/draw
         const res = checkWinner4(newBoard as any);
-        if (res.symbol) {
+        if (res.symbol === aiSymbol) {
           update.status = 'finished';
-          update.winner_id = freshRoom.player2_id; // AI wins
+          update.winner_id = fr.current_turn; // AI's id
         } else if (isDraw(newBoard as any)) {
           update.status = 'finished';
           update.winner_id = null;
         }
 
-        // Shuffle check (if game not finished)
-        if (!update.status && tc >= effectiveNsa) {
-          const pc = typeof freshRoom.power_cells === 'string' ? JSON.parse(freshRoom.power_cells) : (freshRoom.power_cells || []);
-          const cc = typeof freshRoom.curse_cells === 'string' ? JSON.parse(freshRoom.curse_cells) : (freshRoom.curse_cells || []);
-          const s = safeShuffle(newBoard, pc, cc);
+        // Shuffle check
+        if (!update.status && newTc >= effNsa) {
+          const finalBoard = update.board_state || newBoard;
+          const finalPc = update.power_cells ? JSON.parse(update.power_cells) : newPc;
+          const finalCc = update.curse_cells ? JSON.parse(update.curse_cells) : newCc;
+          const s = safeShuffle(finalBoard, finalPc, finalCc);
           update.board_state = s.board;
           update.power_cells = JSON.stringify(s.power_cells);
           update.curse_cells = JSON.stringify(s.curse_cells);
-          update.next_shuffle_at = effectiveNsa + 12;
+          update.next_shuffle_at = effNsa + 12;
         }
 
         await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
@@ -652,6 +787,27 @@ export default function GameRoom() {
                 <PlayerCard username={playerProfiles?.p1.username ?? 'Player 1'} elo={playerProfiles?.p1.elo ?? 1000} symbol="X" you={room.player1_id === meId} active={room.current_turn === room.player1_id && room.status === 'ongoing'} avatarUrl={playerProfiles?.p1.avatarUrl} />
                 <div style={{ textAlign: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-muted)' }}>VS</div>
                 <PlayerCard username={playerProfiles?.p2.username ?? 'Player 2'} elo={playerProfiles?.p2.elo ?? 1000} symbol="O" you={room.player2_id === meId} active={room.current_turn === room.player2_id && room.status === 'ongoing'} avatarUrl={playerProfiles?.p2.avatarUrl} />
+                {/* AI Skill Ready badge */}
+                {room.is_vs_ai && (() => {
+                  const oppSkillKey = amP1 ? 'player2_skill' : 'player1_skill';
+                  const oppSkill: SkillType | null = room[oppSkillKey] ?? null;
+                  if (!oppSkill) return null;
+                  return (
+                    <div style={{ textAlign: 'center', marginTop: '4px' }}>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        padding: '2px 10px',
+                        borderRadius: '4px',
+                        background: 'rgba(124,58,237,0.12)',
+                        color: '#a78bfa',
+                        fontFamily: 'var(--font-heading)',
+                        fontWeight: 600,
+                      }}>
+                        🤖 {SKILL_META[oppSkill].icon} Skill Ready
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Game HUD - Turn counter & Shuffle countdown */}
@@ -694,7 +850,7 @@ export default function GameRoom() {
               )}
 
               <div className="game-bottom-actions" style={{ textAlign: 'center' }}>
-                {room.status === 'ongoing' ? (
+                {room.status === 'ongoing' ? 
                   <button
                     className="btn btn-danger"
                     disabled={lock.status !== 'active'}
@@ -703,11 +859,8 @@ export default function GameRoom() {
                   >
                     Surrender
                   </button>
-                ) : (
-                  <button className="btn btn-ghost" onClick={() => router.push('/dashboard')}>
-                    Return to Dashboard
-                  </button>
-                )}
+                  : null
+                }
               </div>
             </aside>
 
@@ -818,10 +971,57 @@ export default function GameRoom() {
         newElo={resultData?.newElo}
         opponentName={resultData?.opponentName}
         isVsAi={!!room?.is_vs_ai}
-        onPlayAgain={() => router.push('/matchmaking')}
+        onPlayAgain={
+          // AI from matchmaking fallback: no Play Again, just dashboard
+          (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
+          : async () => {
+            if (room?.is_vs_ai && aiOrigin === 'dashboard') {
+              try {
+                const { data, error } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
+                if (error) throw error;
+                const row = Array.isArray(data) ? data[0] : data;
+                if (!row?.room_id) throw new Error('No room created');
+                
+                const session = await supabaseClient.auth.getSession();
+                const uid = session.data.session?.user.id;
+                const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', uid!).single();
+                const persona = getRandomPersona();
+                setAiMatchFound({
+                  gameId: row.room_id,
+                  myName: myProfile?.username ?? 'You',
+                  myElo: myProfile?.elo_rating ?? 1000,
+                  myAvatarUrl: myProfile?.avatar_url ?? null,
+                  oppName: persona,
+                  oppElo: myProfile?.elo_rating ?? 1000,
+                });
+                playMatchFound();
+              } catch { router.push('/dashboard'); }
+            } else {
+              router.push('/matchmaking');
+            }
+          }
+        }
         onDashboard={() => router.push('/dashboard')}
       />
       {!room?.is_vs_ai && <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />}
+
+      {/* AI Match Found Modal for Play Again */}
+      <MatchFoundModal
+        open={!!aiMatchFound}
+        myName={aiMatchFound?.myName ?? ''}
+        myElo={aiMatchFound?.myElo ?? 0}
+        myAvatarUrl={aiMatchFound?.myAvatarUrl}
+        oppName={aiMatchFound?.oppName ?? ''}
+        oppElo={aiMatchFound?.oppElo ?? 0}
+        oppAvatarUrl={null}
+        isVsAi
+        onCountdownDone={() => {
+          if (aiMatchFound) {
+            const personaParam = encodeURIComponent(aiMatchFound.oppName);
+            router.push(`/game/${aiMatchFound.gameId}?origin=dashboard&persona=${personaParam}`);
+          }
+        }}
+      />
     </>
   );
 }
