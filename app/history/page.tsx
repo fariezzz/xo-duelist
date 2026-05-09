@@ -290,10 +290,12 @@ export default function HistoryPage() {
 
       channel = supabaseClient
         .channel(`realtime-history-${uid}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_history' }, (payload: { new?: HistoryRow }) => {
-          const record = payload.new;
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_history' }, (payload) => {
+          const record = payload.new as Partial<HistoryRow> | null;
           if (!record) return;
-          if (record.player1_id === uid || record.player2_id === uid) {
+          const player1Id = typeof record.player1_id === 'string' ? record.player1_id : null;
+          const player2Id = typeof record.player2_id === 'string' ? record.player2_id : null;
+          if (player1Id === uid || player2Id === uid) {
             void fetchPage(uid, 0, true);
           }
         })
