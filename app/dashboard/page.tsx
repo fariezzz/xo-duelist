@@ -30,7 +30,10 @@ export default function DashboardPage() {
     if (aiLoading) return;
     setAiLoading(true);
     try {
-      const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
+      const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', {
+        input_difficulty: 'adaptive',
+        input_origin: 'dashboard',
+      });
       if (rpcErr) throw rpcErr;
       const row = Array.isArray(data) ? data[0] : data;
       if (!row?.room_id) throw new Error('No room created');
@@ -456,14 +459,14 @@ export default function DashboardPage() {
                   {aiLoading ? 'Creating match...' : 'VS AI'}
                 </div>
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Instant duel against adaptive AI
+                  Instant duel against adaptive AI (no ELO changes)
                 </div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(124,58,237,0.15)', color: '#a78bfa', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
                     Instant match
                   </span>
-                  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#fbbf24', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
-                    Reduced ELO
+                  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
+                    No ELO Impact
                   </span>
                 </div>
               </div>
@@ -554,6 +557,7 @@ export default function DashboardPage() {
         oppElo={aiMatchFound?.oppElo ?? 0}
         oppAvatarUrl={null}
         isVsAi
+        aiEloMode="none"
         onCountdownDone={() => {
           if (aiMatchFound) {
             const personaParam = encodeURIComponent(aiMatchFound.oppName);

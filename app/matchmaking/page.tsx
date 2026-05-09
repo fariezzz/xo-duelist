@@ -19,6 +19,7 @@ export default function MatchmakingPage() {
   const matchingRef = useRef(false);
   const timeRef = useRef(0);
   const redirectedRef = useRef(false);
+  const aiFallbackTriggeredRef = useRef(false);
 
   const [playMatchFound] = useSound('/sounds/match-found.wav', { volume: 0.7 });
 
@@ -173,20 +174,30 @@ export default function MatchmakingPage() {
     router.push('/dashboard');
   }
 
-  async function handleFightAI() {
-    if (aiLoading || redirectedRef.current) return;
+  const startAiFallback = useCallback(async () => {
+    if (!meId || lock.status !== 'active') return;
+    if (matchingRef.current) return;
+    if (aiLoading || redirectedRef.current || aiFallbackTriggeredRef.current) return;
+
+    aiFallbackTriggeredRef.current = true;
     setAiLoading(true);
+    matchingRef.current = true;
+
     try {
       // Remove from queue first
-      if (meId) await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
-      const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
+      await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
+      const { data, error: rpcErr } = await supabaseClient.rpc('create_ai_match', {
+        input_difficulty: 'adaptive',
+        input_origin: 'matchmaking',
+      });
       if (rpcErr) throw rpcErr;
       const row = Array.isArray(data) ? data[0] : data;
       if (!row?.room_id) throw new Error('No room created');
+
       redirectedRef.current = true;
       // Show match found modal with AI opponent persona
       const persona = getRandomPersona();
-      const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId!).single();
+      const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId).single();
       setMatchFound({
         gameId: row.room_id,
         myName: myProfile?.username ?? 'You',
@@ -200,14 +211,23 @@ export default function MatchmakingPage() {
       playMatchFound();
     } catch (err) {
       console.error('Failed to create AI match:', err);
-      setAiLoading(false);
+      aiFallbackTriggeredRef.current = false;
       redirectedRef.current = false;
+      matchingRef.current = false;
+      setAiLoading(false);
     }
-  }
+  }, [aiLoading, lock.status, meId, playMatchFound]);
+
+  useEffect(() => {
+    if (lock.status !== 'active' || !joined || !meId) return;
+    if (time < 60) return;
+    if (matchFound || redirectedRef.current || aiLoading) return;
+
+    void startAiFallback();
+  }, [aiLoading, joined, lock.status, matchFound, meId, startAiFallback, time]);
 
   const rangeText = time > 60 ? 'Any ELO' : time > 30 ? '±400 ELO' : '±200 ELO';
   const pct = Math.min(100, (time / 60) * 100);
-  const showAiFallback = time >= 25 && !matchFound && !redirectedRef.current;
 
   return (
     <>
@@ -323,29 +343,18 @@ export default function MatchmakingPage() {
           <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden', marginBottom: '28px' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #7c3aed, #a78bfa, #f59e0b)', borderRadius: '3px', transition: 'width 1s linear', boxShadow: '0 0 8px rgba(124, 58, 237, 0.4)' }} />
           </div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '20px', fontFamily: 'var(--font-heading)' }}>
+            No human match after 60s? We&apos;ll auto-pair you with a bot.
+          </div>
 
+          {aiLoading && (
+            <div style={{ color: '#a78bfa', fontSize: '0.82rem', marginBottom: '16px', fontFamily: 'var(--font-heading)' }}>
+              Creating AI match...
+            </div>
+          )}
           <button className="btn btn-danger" onClick={cancel} style={{ width: '100%' }}>
             ✕ Cancel Search
           </button>
-
-          {showAiFallback && (
-            <div style={{ marginTop: '16px', textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '8px', fontFamily: 'var(--font-heading)' }}>
-                Match taking too long?
-              </div>
-              <button
-                className="btn btn-secondary"
-                onClick={handleFightAI}
-                disabled={aiLoading}
-                style={{ width: '100%', borderColor: 'rgba(124,58,237,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-              >
-                🤖 {aiLoading ? 'Creating AI match...' : 'Fight AI Instead'}
-              </button>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '6px', opacity: 0.7 }}>
-                AI matches give reduced ELO
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -359,6 +368,7 @@ export default function MatchmakingPage() {
         oppElo={matchFound?.oppElo ?? 0}
         oppAvatarUrl={matchFound?.oppAvatarUrl}
         isVsAi={matchFound?.isVsAi}
+        aiEloMode={matchFound?.isVsAi ? 'reduced' : undefined}
         onCountdownDone={() => {
           if (matchFound) {
             const suffix = matchFound.isVsAi 
@@ -371,3 +381,4 @@ export default function MatchmakingPage() {
     </>
   );
 }
+

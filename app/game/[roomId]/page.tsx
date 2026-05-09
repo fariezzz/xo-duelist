@@ -88,6 +88,7 @@ export default function GameRoom() {
     newElo: number;
   } | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [isLobbyGameSession, setIsLobbyGameSession] = useState(false);
 
   /* ── Mechanics state ─────────────────────────────── */
   const [skillTargetMode, setSkillTargetMode] = useState(false);
@@ -123,6 +124,9 @@ export default function GameRoom() {
       const { data } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).single();
       if (!data) return router.push('/dashboard');
       setRoom(data);
+      if (data.player1_ready && data.player2_ready) {
+        setIsLobbyGameSession(true);
+      }
       const bs = typeof data.board_state === 'string' ? JSON.parse(data.board_state) : data.board_state;
       setBoard(bs);
       setMySymbol(data.player1_id === uid ? 'X' : 'O');
@@ -162,6 +166,9 @@ export default function GameRoom() {
 
         const prevTurn = room?.current_turn;
         setRoom(newRow);
+        if (newRow.player1_ready && newRow.player2_ready) {
+          setIsLobbyGameSession(true);
+        }
         if (newRow.board_state) {
           const bs = typeof newRow.board_state === 'string' ? JSON.parse(newRow.board_state) : newRow.board_state;
           setBoard(bs);
@@ -171,6 +178,9 @@ export default function GameRoom() {
         if (newRow.status !== 'ongoing' || newRow.current_turn !== meId) {
           turnSubmitLockRef.current = false;
           setIsSubmittingTurn(false);
+          setSkillTargetMode(false);
+          setActiveSkillUse(null);
+          setSkillTargetCells([]);
         }
 
         // Turn change banners & opponent move sound
@@ -275,6 +285,8 @@ export default function GameRoom() {
             if (res.symbol === aiSymbol) {
               update.status = 'finished';
               update.winner_id = fr.current_turn; // AI's id
+              update.finish_reason = 'skill_overwrite_win';
+              update.ended_at = update.last_move_at;
             }
           }
 
@@ -372,9 +384,13 @@ export default function GameRoom() {
         if (res.symbol === aiSymbol) {
           update.status = 'finished';
           update.winner_id = fr.current_turn; // AI's id
+          update.finish_reason = 'line_win';
+          update.ended_at = update.last_move_at;
         } else if (isDraw(newBoard as any)) {
           update.status = 'finished';
           update.winner_id = null;
+          update.finish_reason = 'draw_board_full';
+          update.ended_at = update.last_move_at;
         }
 
         // Shuffle check
@@ -487,9 +503,13 @@ export default function GameRoom() {
   const mySkillKey = amP1 ? 'player1_skill' : 'player2_skill';
   const myCurseKey = amP1 ? 'player1_curse' : 'player2_curse';
   const oppCurseKey = amP1 ? 'player2_curse' : 'player1_curse';
+  const myTimeoutKey = amP1 ? 'player1_timeouts' : 'player2_timeouts';
+  const oppTimeoutKey = amP1 ? 'player2_timeouts' : 'player1_timeouts';
   const mySkill: SkillType | null = room?.[mySkillKey] ?? null;
   const myCurse: PlayerCurse | null = room?.[myCurseKey] ? (typeof room[myCurseKey] === 'string' ? JSON.parse(room[myCurseKey]) : room[myCurseKey]) : null;
   const oppCurse: PlayerCurse | null = room?.[oppCurseKey] ? (typeof room[oppCurseKey] === 'string' ? JSON.parse(room[oppCurseKey]) : room[oppCurseKey]) : null;
+  const myTimeouts: number = Number(room?.[myTimeoutKey] ?? 0);
+  const oppTimeouts: number = Number(room?.[oppTimeoutKey] ?? 0);
   const powerCells: PowerCell[] = room?.power_cells ? (typeof room.power_cells === 'string' ? JSON.parse(room.power_cells) : room.power_cells) : [];
   const curseCells: CurseCell[] = room?.curse_cells ? (typeof room.curse_cells === 'string' ? JSON.parse(room.curse_cells) : room.curse_cells) : [];
   const turnCount: number = room?.turn_count ?? 0;
@@ -540,7 +560,12 @@ export default function GameRoom() {
     // Check win after OVERWRITE
     if (activeSkillUse === 'OVERWRITE') {
       const res = checkWinner4(newBoard as any);
-      if (res.symbol) { update.status = 'finished'; update.winner_id = meId; }
+      if (res.symbol) {
+        update.status = 'finished';
+        update.winner_id = meId;
+        update.finish_reason = 'skill_overwrite_win';
+        update.ended_at = update.last_move_at;
+      }
     }
 
     // Shuffle check
@@ -636,12 +661,18 @@ export default function GameRoom() {
     // Check win/draw
     const res = checkWinner4(newBoard as any);
     if (res.symbol) {
-      update.status = 'finished'; update.winner_id = meId;
+      update.status = 'finished';
+      update.winner_id = meId;
+      update.finish_reason = 'line_win';
+      update.ended_at = update.last_move_at;
       await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
       return;
     }
     if (isDraw(newBoard as any)) {
-      update.status = 'finished'; update.winner_id = null;
+      update.status = 'finished';
+      update.winner_id = null;
+      update.finish_reason = 'draw_board_full';
+      update.ended_at = update.last_move_at;
       await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
       return;
     }
@@ -688,11 +719,109 @@ export default function GameRoom() {
   /* ── Timer expire ──────────────────────────────── */
   const onExpire = useCallback(async () => {
     if (!room || lock.status !== 'active') return;
-    showToastRef.current({ type: 'error', title: "Time's Up!", message: 'You lost this round.' });
-    const loser = room.current_turn;
-    const winner = loser === room.player1_id ? room.player2_id : room.player1_id;
-    await supabaseClient.from('game_rooms').update({ status: 'finished', winner_id: winner }).eq('id', roomId);
-  }, [lock.status, room, roomId]);
+    try {
+      const { data: latestRoom } = await supabaseClient
+        .from('game_rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+
+      if (!latestRoom || latestRoom.status !== 'ongoing' || !latestRoom.current_turn) return;
+
+      const timedOutPlayerId: string = latestRoom.current_turn;
+      const timedOutIsP1 = timedOutPlayerId === latestRoom.player1_id;
+      const timeoutKey = timedOutIsP1 ? 'player1_timeouts' : 'player2_timeouts';
+      const curseKey = timedOutIsP1 ? 'player1_curse' : 'player2_curse';
+      const nextTurnPlayerId = timedOutIsP1 ? latestRoom.player2_id : latestRoom.player1_id;
+      if (!nextTurnPlayerId) return;
+
+      const currentTimeouts = Number(latestRoom[timeoutKey] ?? 0);
+      const nextTimeouts = currentTimeouts + 1;
+      const nowIso = new Date().toISOString();
+
+      if (nextTimeouts >= 2) {
+        const { data: updatedFinish } = await supabaseClient
+          .from('game_rooms')
+          .update({
+            [timeoutKey]: nextTimeouts,
+            status: 'finished',
+            winner_id: nextTurnPlayerId,
+            last_move_at: nowIso,
+            ended_at: nowIso,
+            finish_reason: 'timeout_second_strike',
+          })
+          .eq('id', roomId)
+          .eq('status', 'ongoing')
+          .eq('current_turn', timedOutPlayerId)
+          .select('id')
+          .maybeSingle();
+
+        if (!updatedFinish) return;
+
+        if (timedOutPlayerId === meId) {
+          showToastRef.current({ type: 'error', title: "Time's Up!", message: 'Timeout kedua. Kamu langsung kalah.' });
+        } else {
+          showToastRef.current({ type: 'success', title: 'Opponent Timed Out', message: 'Lawan timeout kedua dan langsung kalah.' });
+        }
+        return;
+      }
+
+      const tc = latestRoom.turn_count ?? 0;
+      const nsa = latestRoom.next_shuffle_at ?? 12;
+      const effectiveNsa = tc < 12 ? Math.max(nsa, 12) : nsa;
+      const newTurnCount = tc + 1;
+
+      const update: Record<string, unknown> = {
+        [timeoutKey]: nextTimeouts,
+        current_turn: nextTurnPlayerId,
+        last_move_at: nowIso,
+        turn_count: newTurnCount,
+      };
+      if (tc < 12 && nsa < 12) update.next_shuffle_at = 12;
+
+      const timedOutCurseRaw = latestRoom[curseKey];
+      const timedOutCurse: PlayerCurse | null = timedOutCurseRaw
+        ? (typeof timedOutCurseRaw === 'string' ? JSON.parse(timedOutCurseRaw) : timedOutCurseRaw)
+        : null;
+      if (timedOutCurse) {
+        const ticked = tickCurse(timedOutCurse);
+        update[curseKey] = ticked ? JSON.stringify(ticked) : null;
+      }
+
+      if (newTurnCount >= effectiveNsa) {
+        const latestBoard: BoardCell[] = typeof latestRoom.board_state === 'string'
+          ? JSON.parse(latestRoom.board_state) : latestRoom.board_state;
+        const latestPowerCells: PowerCell[] = typeof latestRoom.power_cells === 'string'
+          ? JSON.parse(latestRoom.power_cells) : (latestRoom.power_cells || []);
+        const latestCurseCells: CurseCell[] = typeof latestRoom.curse_cells === 'string'
+          ? JSON.parse(latestRoom.curse_cells) : (latestRoom.curse_cells || []);
+        const s = safeShuffle(latestBoard, latestPowerCells, latestCurseCells);
+        update.board_state = s.board;
+        update.power_cells = JSON.stringify(s.power_cells);
+        update.curse_cells = JSON.stringify(s.curse_cells);
+        update.next_shuffle_at = effectiveNsa + 12;
+      }
+
+      const { data: updatedTurn } = await supabaseClient
+        .from('game_rooms')
+        .update(update)
+        .eq('id', roomId)
+        .eq('status', 'ongoing')
+        .eq('current_turn', timedOutPlayerId)
+        .select('id')
+        .maybeSingle();
+
+      if (!updatedTurn) return;
+
+      if (timedOutPlayerId === meId) {
+        showToastRef.current({ type: 'warning', title: "Time's Up!", message: 'Timeout pertama. Giliran kamu dilewati (1/2).' });
+      } else {
+        showToastRef.current({ type: 'info', title: 'Opponent Timed Out', message: 'Lawan timeout pertama. Gilirannya dilewati (1/2).' });
+      }
+    } catch {
+      showToastRef.current({ type: 'error', title: 'Timer Error', message: 'Failed to process timeout result.' });
+    }
+  }, [lock.status, meId, room, roomId]);
 
   /* ── Timer warning callback ────────────────────── */
   const onTimerWarning = useCallback((secondsLeft: number) => {
@@ -721,6 +850,7 @@ export default function GameRoom() {
   }
 
   const isMyTurn = room.current_turn === meId;
+  const isLobbyGame = isLobbyGameSession || Boolean(room.player1_ready && room.player2_ready);
 
   const myPlayerName =
   mySymbol === 'X'
@@ -823,6 +953,24 @@ export default function GameRoom() {
                   onWarning={onTimerWarning}
                   run={room.status === 'ongoing'}
                 />
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '6px',
+                  fontFamily: 'var(--font-heading)',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                  You timeout: {myTimeouts}/2
+                </span>
+                <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                  {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
+                </span>
               </div>
 
               {fumbleWarning && (
@@ -933,7 +1081,17 @@ export default function GameRoom() {
                 onClick={async () => {
                   if (!room || !meId) return;
                   const winner = room.player1_id === meId ? room.player2_id : room.player1_id;
-                  await supabaseClient.from('game_rooms').update({ status: 'finished', winner_id: winner }).eq('id', roomId);
+                  const nowIso = new Date().toISOString();
+                  await supabaseClient
+                    .from('game_rooms')
+                    .update({
+                      status: 'finished',
+                      winner_id: winner,
+                      last_move_at: nowIso,
+                      ended_at: nowIso,
+                      finish_reason: 'surrender',
+                    })
+                    .eq('id', roomId);
                   setShowSurrenderConfirm(false);
                 }}
                 style={{ minWidth: '120px' }}
@@ -971,37 +1129,88 @@ export default function GameRoom() {
         newElo={resultData?.newElo}
         opponentName={resultData?.opponentName}
         isVsAi={!!room?.is_vs_ai}
+        aiEloMode={room?.is_vs_ai ? (room?.ai_elo_mode ?? (aiOrigin === 'dashboard' ? 'none' : 'reduced')) : undefined}
         onPlayAgain={
-          // AI from matchmaking fallback: no Play Again, just dashboard
-          (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
-          : async () => {
-            if (room?.is_vs_ai && aiOrigin === 'dashboard') {
-              try {
-                const { data, error } = await supabaseClient.rpc('create_ai_match', { input_difficulty: 'adaptive' });
-                if (error) throw error;
-                const row = Array.isArray(data) ? data[0] : data;
-                if (!row?.room_id) throw new Error('No room created');
-                
-                const session = await supabaseClient.auth.getSession();
-                const uid = session.data.session?.user.id;
-                const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', uid!).single();
-                const persona = getRandomPersona();
-                setAiMatchFound({
-                  gameId: row.room_id,
-                  myName: myProfile?.username ?? 'You',
-                  myElo: myProfile?.elo_rating ?? 1000,
-                  myAvatarUrl: myProfile?.avatar_url ?? null,
-                  oppName: persona,
-                  oppElo: myProfile?.elo_rating ?? 1000,
-                });
-                playMatchFound();
-              } catch { router.push('/dashboard'); }
-            } else {
-              router.push('/matchmaking');
-            }
-          }
+          isLobbyGame
+            ? undefined
+            : (
+                // AI from matchmaking fallback: no Play Again, just dashboard
+                (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
+                : async () => {
+                  if (room?.is_vs_ai && aiOrigin === 'dashboard') {
+                    try {
+                      const { data, error } = await supabaseClient.rpc('create_ai_match', {
+                        input_difficulty: 'adaptive',
+                        input_origin: 'dashboard',
+                      });
+                      if (error) throw error;
+                      const row = Array.isArray(data) ? data[0] : data;
+                      if (!row?.room_id) throw new Error('No room created');
+                      
+                      const session = await supabaseClient.auth.getSession();
+                      const uid = session.data.session?.user.id;
+                      const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', uid!).single();
+                      const persona = getRandomPersona();
+                      setAiMatchFound({
+                        gameId: row.room_id,
+                        myName: myProfile?.username ?? 'You',
+                        myElo: myProfile?.elo_rating ?? 1000,
+                        myAvatarUrl: myProfile?.avatar_url ?? null,
+                        oppName: persona,
+                        oppElo: myProfile?.elo_rating ?? 1000,
+                      });
+                      playMatchFound();
+                    } catch { router.push('/dashboard'); }
+                  } else {
+                    router.push('/matchmaking');
+                  }
+                }
+              )
         }
-        onDashboard={() => router.push('/dashboard')}
+        onDashboard={async () => {
+          if (isLobbyGame) {
+            try {
+              const emptyBoard = Array(25).fill(null);
+              await supabaseClient
+                .from('game_rooms')
+                .update({
+                  status: 'waiting',
+                  winner_id: null,
+                  board_state: emptyBoard,
+                  current_turn: room.player1_id,
+                  last_move_at: new Date().toISOString(),
+                  turn_count: 0,
+                  next_shuffle_at: 12,
+                  power_cells: [],
+                  curse_cells: [],
+                  player1_skill: null,
+                  player2_skill: null,
+                  player1_curse: null,
+                  player2_curse: null,
+                  move_log: [],
+                  started_at: null,
+                  ended_at: null,
+                  finish_reason: null,
+                  player1_timeouts: 0,
+                  player2_timeouts: 0,
+                  player1_ready: false,
+                  player2_ready: false,
+                })
+                .eq('id', roomId);
+            } catch {
+              showToastRef.current({
+                type: 'error',
+                title: 'Back to Lobby Failed',
+                message: 'Failed to reset room state. Please try again.',
+              });
+              return;
+            }
+            router.push(`/lobby/${roomId}`);
+            return;
+          }
+          router.push('/dashboard');
+        }}
+        dashboardLabel={isLobbyGame ? 'Back to Lobby' : undefined}
       />
       {!room?.is_vs_ai && <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />}
 
@@ -1015,6 +1224,7 @@ export default function GameRoom() {
         oppElo={aiMatchFound?.oppElo ?? 0}
         oppAvatarUrl={null}
         isVsAi
+        aiEloMode="none"
         onCountdownDone={() => {
           if (aiMatchFound) {
             const personaParam = encodeURIComponent(aiMatchFound.oppName);
@@ -1025,4 +1235,5 @@ export default function GameRoom() {
     </>
   );
 }
+
 

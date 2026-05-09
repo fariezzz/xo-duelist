@@ -8,14 +8,27 @@ type Props = {
   you?: boolean;
   active?: boolean;
   avatarUrl?: string | null;
+  statLabel?: string;
+  statValue?: number | string;
 };
 
-export default function PlayerCard({ username, elo, symbol, you, active, avatarUrl }: Props) {
+export default function PlayerCard({
+  username,
+  elo,
+  symbol,
+  you,
+  active,
+  avatarUrl,
+  statLabel,
+  statValue,
+}: Props) {
   const symbolColor = symbol === 'X' ? '#a78bfa' : '#fbbf24';
   const symbolGlow =
     symbol === 'X'
       ? '0 0 12px rgba(124, 58, 237, 0.5)'
       : '0 0 12px rgba(245, 158, 11, 0.5)';
+  const metaLabel = statLabel ?? 'ELO';
+  const metaValue = statValue ?? elo;
 
   return (
     <div
@@ -105,7 +118,7 @@ export default function PlayerCard({ username, elo, symbol, you, active, avatarU
             marginTop: '2px',
           }}
         >
-          ELO: {elo}
+          {metaLabel}: {metaValue}
         </div>
       </div>
     </div>

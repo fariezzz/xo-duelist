@@ -48,6 +48,21 @@ function getLobbyPresence(): { roomId: string; role: string; leftAt: number | nu
   } catch { return null; }
 }
 
+function toLobbyErrorMessage(err: unknown, fallback: string): string {
+  const raw = String((err as any)?.message || fallback);
+  const msg = raw.toLowerCase();
+
+  if (msg.includes('room_finished')) return 'Match sebelumnya sudah selesai. Klik Back to Lobby dari hasil game untuk reset room.';
+  if (msg.includes('room_not_found_or_full')) return 'Room not found or already full.';
+  if (msg.includes('room_not_found')) return 'Room not found.';
+  if (msg.includes('players_not_ready')) return 'All players must be READY first.';
+  if (msg.includes('not_participant')) return 'You are not a participant in this room.';
+  if (msg.includes('not_host')) return 'Only host can start the game.';
+  if (msg.includes('room_not_waiting')) return 'Room is not in waiting state.';
+
+  return raw;
+}
+
 export default function LobbyRoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -182,7 +197,7 @@ export default function LobbyRoomPage() {
           saveLobbyPresence(roomId, isHost ? 'host' : 'guest');
         }
       } catch (err: any) {
-        if (!cancelled) setError(err?.message || 'Failed to load lobby');
+        if (!cancelled) setError(toLobbyErrorMessage(err, 'Failed to load lobby'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -217,7 +232,7 @@ export default function LobbyRoomPage() {
       if (error) throw error;
       clearLobbyPresence();
       setRoomCancelled(true);
-    } catch (err: any) { setError(err?.message || 'Failed to cancel room'); }
+    } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to cancel room')); }
   }
 
   async function exitRoom() {
@@ -228,7 +243,7 @@ export default function LobbyRoomPage() {
       if (error) throw error;
       clearLobbyPresence();
       setLeftRoom(true);
-    } catch (err: any) { setError(err?.message || 'Failed to leave room'); }
+    } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to leave room')); }
   }
 
   async function toggleReady() {
@@ -240,7 +255,7 @@ export default function LobbyRoomPage() {
       const currentReady = isHost ? room.player1_ready : room.player2_ready;
       const { error } = await supabaseClient.rpc('set_lobby_ready', { input_room_id: room.id, input_ready: !currentReady });
       if (error) throw error;
-    } catch (err: any) { setError(err?.message || 'Failed to update ready'); }
+    } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to update ready')); }
     finally { setReadyLoading(false); }
   }
 
@@ -252,8 +267,7 @@ export default function LobbyRoomPage() {
       if (error) throw error;
       clearLobbyPresence();
     } catch (err: any) {
-      const msg = String(err?.message || 'Failed to start game');
-      setError(msg.toLowerCase().includes('players_not_ready') ? 'All players must be READY first' : msg);
+      setError(toLobbyErrorMessage(err, 'Failed to start game'));
     } finally { setStartLoading(false); }
   }
 

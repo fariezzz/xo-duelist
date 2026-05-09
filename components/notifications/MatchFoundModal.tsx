@@ -11,6 +11,7 @@ interface Props {
   oppAvatarUrl?: string | null;
   onCountdownDone: () => void;
   isVsAi?: boolean;
+  aiEloMode?: "none" | "reduced";
 }
 
 export default function MatchFoundModal({
@@ -23,6 +24,7 @@ export default function MatchFoundModal({
   oppAvatarUrl,
   onCountdownDone,
   isVsAi,
+  aiEloMode,
 }: Props) {
   const [count, setCount] = useState(3);
   const onDoneRef = useRef(onCountdownDone);
@@ -234,23 +236,23 @@ export default function MatchFoundModal({
           {diffLabel}
         </div>
 
-        {/* Reduced ELO badge for AI matches */}
-        {isVsAi && (
+        {/* AI ELO policy badge */}
+        {isVsAi && aiEloMode && (
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
             padding: '4px 14px',
             borderRadius: '6px',
-            background: 'rgba(245,158,11,0.12)',
-            border: '1px solid rgba(245,158,11,0.2)',
+            background: aiEloMode === "none" ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+            border: aiEloMode === "none" ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)',
             marginBottom: '24px',
             fontSize: '0.78rem',
             fontFamily: 'var(--font-heading)',
             fontWeight: 600,
-            color: '#fbbf24',
+            color: aiEloMode === "none" ? '#10b981' : '#fbbf24',
           }}>
-            ⚡ Reduced ELO Reward
+            {aiEloMode === "none" ? "🛡️ No ELO Impact" : "⚡ Small ELO Impact"}
           </div>
         )}
 

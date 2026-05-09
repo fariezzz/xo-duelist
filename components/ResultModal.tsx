@@ -11,11 +11,13 @@ interface Props {
   opponentName?: string;
   onPlayAgain?: () => void;
   onDashboard?: () => void;
+  dashboardLabel?: string;
   /* Legacy compat — used by training mode */
   title?: string;
   message?: string;
   onClose?: () => void;
   isVsAi?: boolean;
+  aiEloMode?: "none" | "reduced";
 }
 
 const OUTCOME_CONFIG = {
@@ -38,7 +40,7 @@ const OUTCOME_CONFIG = {
     glowColor: "0 0 40px rgba(239, 68, 68, 0.15)",
     iconClass: "",
     eloColor: "#ef4444",
-    eloPrefix: "",
+    eloPrefix: "-",
     vignetteStyle: { boxShadow: "inset 0 0 120px rgba(239,68,68,0.08)" } as React.CSSProperties,
   },
   draw: {
@@ -62,10 +64,12 @@ export default function ResultModal({
   opponentName,
   onPlayAgain,
   onDashboard,
+  dashboardLabel,
   title,
   message,
   onClose,
   isVsAi,
+  aiEloMode,
 }: Props) {
   if (!open) return null;
 
@@ -94,7 +98,8 @@ export default function ResultModal({
   if (!outcome) return null;
 
   const cfg = OUTCOME_CONFIG[outcome];
-  const eloStr = eloChange !== undefined
+  const isAiNoElo = isVsAi && aiEloMode === "none";
+  const eloStr = !isAiNoElo && eloChange !== undefined
     ? `${cfg.eloPrefix}${Math.abs(eloChange)} ELO`
     : null;
 
@@ -115,15 +120,15 @@ export default function ResultModal({
           <div className="result-elo-change" style={{ color: cfg.eloColor }}>{eloStr}</div>
         )}
 
-        {/* VS AI reduced ELO note */}
-        {isVsAi && (
+        {/* VS AI ELO policy note */}
+        {isVsAi && aiEloMode && (
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px', fontFamily: 'var(--font-heading)' }}>
-            🤖 VS AI • Reduced ELO
+            {aiEloMode === "none" ? "🤖 VS AI • No ELO Impact" : "🤖 VS AI • Small ELO Impact"}
           </div>
         )}
 
         {/* New total */}
-        {newElo !== undefined && (
+        {newElo !== undefined && !isAiNoElo && (
           <div className="result-elo-total">
             New ELO: <span style={{ color: "var(--accent-gold)", fontWeight: 700 }}>{newElo}</span>
           </div>
@@ -145,7 +150,7 @@ export default function ResultModal({
           )}
           {onDashboard && (
             <button className="btn btn-ghost" onClick={onDashboard} style={{ width: "100%" }}>
-              ← Back to Home
+              {dashboardLabel ?? "Back to Home"}
             </button>
           )}
           {onClose && !onPlayAgain && !onDashboard && (
@@ -158,3 +163,4 @@ export default function ResultModal({
     </div>
   );
 }
+
