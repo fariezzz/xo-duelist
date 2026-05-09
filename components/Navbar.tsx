@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabaseClient } from '../lib/supabase';
 import TierBadge from './TierBadge';
 import { clearCachedProfile, getCachedProfile, setCachedProfile } from '../lib/profileCache';
+import GameInvitePopup from "./GameInvitePopup";
 
 interface NavProfile {
   username: string;
@@ -141,6 +142,7 @@ export default function Navbar() {
   };
 
   return (
+    <>  
     <nav
       style={{
         position: 'fixed',
@@ -321,6 +323,8 @@ export default function Navbar() {
         </div>
       </div>
     </nav>
+     <GameInvitePopup currentUserId={currentUserId} />
+    </>
   );
 }
 

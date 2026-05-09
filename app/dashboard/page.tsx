@@ -480,6 +480,19 @@ export default function DashboardPage() {
             >
               🏠 Lobby Room
             </button>
+            
+            <button
+              className="btn btn-lg btn-ghost"
+              onClick={() => router.push("/friends")}
+              style={{
+                width: "100%",
+                borderColor: "rgba(124,58,237,0.3)",
+                color: "#a78bfa",
+              }}
+            >
+              👥 Friends
+            </button>
+
             <button
               className="btn btn-lg btn-ghost"
               onClick={() => router.push('/training')}
