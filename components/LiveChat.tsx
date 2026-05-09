@@ -55,7 +55,7 @@ export default function LiveChat({ roomId, meId, playerName }: LiveChatProps) {
       if (!active) return;
 
       if (error) {
-        console.error("Gagal load chat:", error.message);
+        console.error("Failed to load chat:", error.message);
         setMessages([]);
       } else {
         setMessages([...(data ?? [])].reverse() as ChatMessage[]);
@@ -112,7 +112,7 @@ export default function LiveChat({ roomId, meId, playerName }: LiveChatProps) {
     if (!cleanText || !meId || sending) return;
 
     if (cleanText.length > 300) {
-      alert("Pesan maksimal 300 karakter.");
+      alert("Message limit is 300 characters.");
       return;
     }
 
@@ -130,8 +130,8 @@ export default function LiveChat({ roomId, meId, playerName }: LiveChatProps) {
       .single();
 
     if (error) {
-      console.error("Gagal kirim chat:", error.message);
-      alert("Chat gagal dikirim. Cek koneksi atau policy Supabase.");
+      console.error("Failed to send chat:", error.message);
+      alert("Failed to send chat. Check your connection or Supabase policy.");
     } else if (data) {
       setMessages((prev) => {
         const exists = prev.some((msg) => msg.id === data.id);
@@ -160,16 +160,16 @@ export default function LiveChat({ roomId, meId, playerName }: LiveChatProps) {
               <p>Room #{roomId.slice(0, 8)}</p>
             </div>
 
-            <button onClick={() => setOpen(false)} title="Tutup chat">
+            <button onClick={() => setOpen(false)} title="Close chat">
               ✕
             </button>
           </div>
 
           <div className={styles.chatBody}>
             {loading ? (
-              <div className={styles.emptyState}>Memuat chat...</div>
+              <div className={styles.emptyState}>Loading chat...</div>
             ) : messages.length === 0 ? (
-              <div className={styles.emptyState}>Belum ada pesan.</div>
+              <div className={styles.emptyState}>No messages yet.</div>
             ) : (
               messages.map((msg) => {
                 const isMine = msg.sender_id === meId;
@@ -183,13 +183,13 @@ export default function LiveChat({ roomId, meId, playerName }: LiveChatProps) {
                   >
                     <div className={styles.messageBubble}>
                       <div className={styles.messageName}>
-                        {isMine ? "Kamu" : msg.sender_name}
+                        {isMine ? "You" : msg.sender_name}
                       </div>
 
                       <div className={styles.messageText}>{msg.message}</div>
 
                       <div className={styles.messageTime}>
-                        {new Date(msg.created_at).toLocaleTimeString("id-ID", {
+                        {new Date(msg.created_at).toLocaleTimeString("en-US", {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -207,13 +207,13 @@ export default function LiveChat({ roomId, meId, playerName }: LiveChatProps) {
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={meId ? "Ketik pesan..." : "Login diperlukan"}
+              placeholder={meId ? "Type a message..." : "Login required"}
               maxLength={300}
               disabled={!meId || sending}
             />
 
             <button type="submit" disabled={!text.trim() || !meId || sending}>
-              {sending ? "..." : "Kirim"}
+              {sending ? "..." : "Send"}
             </button>
           </form>
         </div>

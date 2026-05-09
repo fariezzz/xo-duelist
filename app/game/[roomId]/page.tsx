@@ -25,6 +25,7 @@ import {
 } from '../../../lib/mechanics';
 import useSound from 'use-sound';
 import { computeAIMove, getRandomPersona, decideAISkill } from '../../../lib/aiPlayer';
+import { useStatusManager } from '../../../hooks/useStatusManager';
 
 import LiveChat from '../../../components/LiveChat';
 
@@ -57,6 +58,7 @@ export default function GameRoom() {
   const [room, setRoom] = useState<any>(null);
   const [board, setBoard] = useState<BoardCell[]>(Array(25).fill(null));
   const [meId, setMeId] = useState<string | null>(null);
+  const { setStatus } = useStatusManager(meId);
   const [mySymbol, setMySymbol] = useState<'X' | 'O' | '?'>('?');
   const [turnTimerKey, setTurnTimerKey] = useState(0);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
@@ -163,6 +165,7 @@ export default function GameRoom() {
       if (!s.data.session) return router.push('/');
       const uid = s.data.session.user.id;
       setMeId(uid);
+      await setStatus('in_game', uid);
       const { data } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).single();
       if (!data) return router.push('/dashboard');
       setRoom(data);
@@ -196,7 +199,7 @@ export default function GameRoom() {
       const aiLabel = data.is_vs_ai ? ' (VS AI)' : '';
       showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: '🎮', duration: 2500 });
     })();
-  }, [roomId, router]);
+  }, [roomId, router, setStatus]);
 
   /* ── Realtime channel ──────────────────────────── */
   useEffect(() => {
@@ -549,7 +552,8 @@ export default function GameRoom() {
 
     setResultData({ outcome, eloChange, newElo, opponentName });
     setShowResult(true);
-  }, [meId]);
+    await setStatus('online');
+  }, [meId, setStatus]);
 
   /* ── Helper: am I player1? ────────────────────── */
   const amP1 = room?.player1_id === meId;
@@ -823,9 +827,9 @@ export default function GameRoom() {
         if (!updatedFinish) return;
 
         if (timedOutPlayerId === meId) {
-          showToastRef.current({ type: 'error', title: "Time's Up!", message: 'Timeout kedua. Kamu langsung kalah.' });
+          showToastRef.current({ type: 'error', title: "Time's Up!", message: 'Second timeout. You lose immediately.' });
         } else {
-          showToastRef.current({ type: 'success', title: 'Opponent Timed Out', message: 'Lawan timeout kedua dan langsung kalah.' });
+          showToastRef.current({ type: 'success', title: 'Opponent Timed Out', message: 'Second timeout for your opponent. They lose immediately.' });
         }
         return;
       }
@@ -878,9 +882,9 @@ export default function GameRoom() {
       if (!updatedTurn) return;
 
       if (timedOutPlayerId === meId) {
-        showToastRef.current({ type: 'warning', title: "Time's Up!", message: 'Timeout pertama. Giliran kamu dilewati (1/2).' });
+        showToastRef.current({ type: 'warning', title: "Time's Up!", message: 'First timeout. Your turn was skipped (1/2).' });
       } else {
-        showToastRef.current({ type: 'info', title: 'Opponent Timed Out', message: 'Lawan timeout pertama. Gilirannya dilewati (1/2).' });
+        showToastRef.current({ type: 'info', title: 'Opponent Timed Out', message: "First timeout for your opponent. Their turn was skipped (1/2)." });
       }
     } catch {
       showToastRef.current({ type: 'error', title: 'Timer Error', message: 'Failed to process timeout result.' });
@@ -939,10 +943,10 @@ export default function GameRoom() {
               }}
             >
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#f59e0b', marginBottom: '6px' }}>
-                Sesi ini sedang read-only
+                This session is currently read-only
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px' }}>
-                Akun ini aktif di tab/browser lain. Ambil alih sesi untuk mulai bermain dari tab ini.
+                This account is active in another browser/tab. Take over the session to play from this tab.
               </div>
               <button
                 className="btn btn-primary"
@@ -1201,6 +1205,7 @@ export default function GameRoom() {
               // AI from matchmaking fallback: no Play Again, just dashboard
               (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
                 : async () => {
+                  await setStatus('online');
                   if (room?.is_vs_ai && aiOrigin === 'dashboard') {
                     try {
                       const { data, error } = await supabaseClient.rpc('create_ai_match', {
@@ -1232,6 +1237,7 @@ export default function GameRoom() {
             )
         }
         onDashboard={async () => {
+          await setStatus('online');
           if (isLobbyGame) {
             try {
               const emptyBoard = Array(25).fill(null);

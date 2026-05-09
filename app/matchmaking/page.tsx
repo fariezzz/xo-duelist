@@ -7,6 +7,7 @@ import MatchFoundModal from '../../components/notifications/MatchFoundModal';
 import useSound from 'use-sound';
 import { useScopedSessionLock } from '../../hooks/useScopedSessionLock';
 import { getRandomPersona } from '../../lib/aiPlayer';
+import { useStatusManager } from '../../hooks/useStatusManager';
 
 export default function MatchmakingPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function MatchmakingPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
+  const { setStatus } = useStatusManager(meId);
   const matchingRef = useRef(false);
   const timeRef = useRef(0);
   const redirectedRef = useRef(false);
@@ -51,6 +53,7 @@ export default function MatchmakingPage() {
       const uid = s.data.session.user.id;
       if (cancelled) return;
       setMeId(uid);
+      await setStatus('matchmaking', uid);
 
       // Rejoin safeguard: if an ongoing match already exists, jump back into it.
       const { data: activeRooms } = await supabaseClient
@@ -125,6 +128,7 @@ export default function MatchmakingPage() {
       if (!redirectedRef.current) {
         redirectedRef.current = true;
         await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
+        await setStatus('in_game');
         const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId).single();
         const { data: oppProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', oppId).single();
         setMatchFound({
@@ -170,6 +174,7 @@ export default function MatchmakingPage() {
   async function cancel() {
     if (lock.status === 'active' && meId) {
       await supabaseClient.from('matchmaking_queue').delete().eq('player_id', meId);
+      await setStatus('online');
     }
     router.push('/dashboard');
   }
@@ -195,6 +200,7 @@ export default function MatchmakingPage() {
       if (!row?.room_id) throw new Error('No room created');
 
       redirectedRef.current = true;
+      await setStatus('in_game');
       // Show match found modal with AI opponent persona
       const persona = getRandomPersona();
       const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', meId).single();
@@ -216,7 +222,7 @@ export default function MatchmakingPage() {
       matchingRef.current = false;
       setAiLoading(false);
     }
-  }, [aiLoading, lock.status, meId, playMatchFound]);
+  }, [aiLoading, lock.status, meId, playMatchFound, setStatus]);
 
   useEffect(() => {
     if (lock.status !== 'active' || !joined || !meId) return;
@@ -262,10 +268,10 @@ export default function MatchmakingPage() {
               }}
             >
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#f59e0b', marginBottom: '6px' }}>
-                Session aktif di browser/tab lain
+                Session is active in another browser/tab
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '10px' }}>
-                Tab ini read-only. Ambil alih sesi jika kamu ingin lanjut matchmaking dari sini.
+                This tab is read-only. Take over the session if you want to continue matchmaking here.
               </div>
               <button
                 className="btn btn-primary"

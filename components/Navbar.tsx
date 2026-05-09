@@ -1,11 +1,10 @@
 "use client";
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { supabaseClient } from '../lib/supabase';
 import TierBadge from './TierBadge';
 import { clearCachedProfile, getCachedProfile, setCachedProfile } from '../lib/profileCache';
-import GameInvitePopup from "./GameInvitePopup";
 
 interface NavProfile {
   username: string;
@@ -13,16 +12,24 @@ interface NavProfile {
   avatarUrl: string | null;
 }
 
+type FriendRequestChangePayload = {
+  new?: { status?: string } | null;
+  old?: { status?: string } | null;
+};
+
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname() ?? '';
   const [profile, setProfile] = useState<NavProfile | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [pendingFriendRequestCount, setPendingFriendRequestCount] = useState(0);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     let profileChannel: ReturnType<typeof supabaseClient.channel> | null = null;
+    let friendRequestChannel: ReturnType<typeof supabaseClient.channel> | null = null;
 
     async function fetchProfileData(userId: string) {
       const { data, error } = await supabaseClient
@@ -65,20 +72,59 @@ export default function Navbar() {
         .subscribe();
     }
 
+    async function refreshPendingFriendRequestCount(userId: string) {
+      const { count, error } = await supabaseClient
+        .from('friend_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('receiver_id', userId)
+        .eq('status', 'pending');
+
+      if (cancelled) return;
+      if (error) {
+        setPendingFriendRequestCount(0);
+        return;
+      }
+      setPendingFriendRequestCount(count ?? 0);
+    }
+
+    function mountFriendRequestListener(userId: string) {
+      if (friendRequestChannel) supabaseClient.removeChannel(friendRequestChannel);
+      friendRequestChannel = supabaseClient
+        .channel(`friend-request-nav-${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${userId}` },
+          (payload: FriendRequestChangePayload) => {
+            if (cancelled) return;
+            const nextStatus = payload.new?.status;
+            const prevStatus = payload.old?.status;
+            if (nextStatus === 'pending' || prevStatus === 'pending' || !nextStatus) {
+              void refreshPendingFriendRequestCount(userId);
+            }
+          }
+        )
+        .subscribe();
+    }
+
     async function syncForUser(userId: string | null) {
       setCurrentUserId(userId);
       if (!userId) {
         setProfile(null);
+        setPendingFriendRequestCount(0);
         if (profileChannel) supabaseClient.removeChannel(profileChannel);
+        if (friendRequestChannel) supabaseClient.removeChannel(friendRequestChannel);
         profileChannel = null;
+        friendRequestChannel = null;
         return;
       }
 
       const cached = getCachedProfile(userId);
       if (cached) setProfile((prev) => prev ? { ...prev, elo: cached.elo } : null);
       await fetchProfileData(userId);
+      await refreshPendingFriendRequestCount(userId);
       if (cancelled) return;
       mountProfileListener(userId);
+      mountFriendRequestListener(userId);
     }
 
     (async () => {
@@ -90,6 +136,7 @@ export default function Navbar() {
     const auth = supabaseClient.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
         setProfile(null);
+        setPendingFriendRequestCount(0);
         if (typeof window !== 'undefined' && window.location.pathname !== '/') {
           window.location.href = '/';
         }
@@ -102,6 +149,7 @@ export default function Navbar() {
       cancelled = true;
       auth.data.subscription.unsubscribe();
       if (profileChannel) supabaseClient.removeChannel(profileChannel);
+      if (friendRequestChannel) supabaseClient.removeChannel(friendRequestChannel);
     };
   }, []);
 
@@ -116,11 +164,25 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  useEffect(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDropdownOpen(false);
+    }
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, []);
+
   async function signOut() {
     if (currentUserId) clearCachedProfile(currentUserId);
     else clearCachedProfile();
     setProfile(null);
     setDropdownOpen(false);
+    if (currentUserId) {
+      await supabaseClient
+        .from('profiles')
+        .update({ status: 'offline', last_seen: new Date().toISOString() })
+        .eq('id', currentUserId);
+    }
     await supabaseClient.auth.signOut();
     router.replace('/');
   }
@@ -141,8 +203,11 @@ export default function Navbar() {
     fontFamily: 'var(--font-heading)',
   };
 
+  function navLinkColorFor(path: '/leaderboard' | '/history') {
+    return pathname === path ? 'var(--text-primary)' : 'var(--text-muted)';
+  }
+
   return (
-    <>  
     <nav
       style={{
         position: 'fixed',
@@ -192,36 +257,115 @@ export default function Navbar() {
           <Link
             href="/leaderboard"
             className="hidden-on-mobile"
-            style={navLinkStyle}
+            style={{ ...navLinkStyle, color: navLinkColorFor('/leaderboard') }}
+            aria-current={pathname === '/leaderboard' ? 'page' : undefined}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = navLinkColorFor('/leaderboard'))}
           >
             Leaderboard
           </Link>
           <Link
             href="/history"
             className="hidden-on-mobile"
-            style={navLinkStyle}
+            style={{ ...navLinkStyle, color: navLinkColorFor('/history') }}
+            aria-current={pathname === '/history' ? 'page' : undefined}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = navLinkColorFor('/history'))}
           >
             History
           </Link>
 
-          {/* ELO badge */}
+          {/* Notification + separator + ELO */}
           {profile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                onClick={() => router.push('/friends')}
+                aria-label={pendingFriendRequestCount > 0 ? `Open notifications. You have ${pendingFriendRequestCount} new friend request(s).` : 'Open notifications'}
                 style={{
-                  color: 'var(--accent-gold)',
-                  fontFamily: 'var(--font-heading)',
-                  fontWeight: 700,
+                  width: 24,
+                  height: 24,
+                  position: 'relative',
+                  borderRadius: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-primary)',
                   fontSize: '0.95rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'opacity 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.85';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
                 }}
               >
-                {profile.elo}
-              </span>
-              <TierBadge elo={profile.elo} />
+                {'\u{1F514}'}
+                {pendingFriendRequestCount > 0 && (
+                  <span
+                    aria-hidden
+                    style={{
+                      position: 'absolute',
+                      top: -2,
+                      right: -2,
+                      width: 9,
+                      height: 9,
+                      borderRadius: '999px',
+                      background: '#ef4444',
+                      boxShadow: '0 0 0 2px rgba(10,15,30,0.9)',
+                    }}
+                  />
+                )}
+              </button>
+
+              <span
+                aria-hidden
+                style={{
+                  width: 1,
+                  height: 22,
+                  background: 'rgba(255,255,255,0.2)',
+                }}
+              />
+
+              <button
+                onClick={() => {
+                  setDropdownOpen(false);
+                  router.push('/profile');
+                }}
+                aria-label="Open profile from ELO"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <span
+                  style={{
+                    color: 'var(--accent-gold)',
+                    fontFamily: 'var(--font-heading)',
+                    fontWeight: 700,
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  {profile.elo}
+                </span>
+                <TierBadge elo={profile.elo} />
+              </button>
             </div>
           )}
 
@@ -230,6 +374,10 @@ export default function Navbar() {
             <div ref={dropdownRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setDropdownOpen((o) => !o)}
+                aria-expanded={dropdownOpen}
+                aria-haspopup="menu"
+                aria-controls="nav-user-menu"
+                aria-label="Open user menu"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -289,13 +437,16 @@ export default function Navbar() {
                   {profile.username}
                 </span>
                 <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: dropdownOpen ? 'rotate(180deg)' : 'none' }}>
-                  ▼
+                  {'\u25BC'}
                 </span>
               </button>
 
               {/* Dropdown */}
               {dropdownOpen && (
                 <div
+                  id="nav-user-menu"
+                  role="menu"
+                  aria-label="User navigation menu"
                   style={{
                     position: 'absolute',
                     top: 'calc(100% + 8px)',
@@ -311,11 +462,12 @@ export default function Navbar() {
                     transformOrigin: 'top right',
                   }}
                 >
-                  <DropdownItem icon="👤" label="My Profile" onClick={() => { setDropdownOpen(false); router.push('/profile'); }} />
-                  <DropdownItem icon="🏠" label="Home" onClick={() => { setDropdownOpen(false); router.push('/dashboard'); }} />
-                  <DropdownItem icon="📜" label="Match History" onClick={() => { setDropdownOpen(false); router.push('/history'); }} />
+                  <DropdownItem icon={'\u{1F464}'} label="My Profile" active={pathname === '/profile'} onClick={() => { setDropdownOpen(false); router.push('/profile'); }} />
+                  <DropdownItem icon={'\u{1F3E0}'} label="Home" active={pathname === '/dashboard'} onClick={() => { setDropdownOpen(false); router.push('/dashboard'); }} />
+                  <DropdownItem icon={'\u{1F3C6}'} label="Leaderboard" active={pathname === '/leaderboard'} onClick={() => { setDropdownOpen(false); router.push('/leaderboard'); }} />
+                  <DropdownItem icon={'\u{1F4DC}'} label="Match History" active={pathname === '/history'} onClick={() => { setDropdownOpen(false); router.push('/history'); }} />
                   <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
-                  <DropdownItem icon="🚪" label="Logout" onClick={signOut} danger />
+                  <DropdownItem icon={'\u{1F6AA}'} label="Logout" onClick={signOut} danger />
                 </div>
               )}
             </div>
@@ -323,16 +475,28 @@ export default function Navbar() {
         </div>
       </div>
     </nav>
-     <GameInvitePopup currentUserId={currentUserId} />
-    </>
   );
 }
 
 // ── Dropdown Item ──────────────────────────────────
-function DropdownItem({ icon, label, onClick, danger }: { icon: string; label: string; onClick: () => void; danger?: boolean }) {
+function DropdownItem({
+  icon,
+  label,
+  onClick,
+  danger,
+  active,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  active?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
+      role="menuitem"
+      aria-current={active ? 'page' : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -341,9 +505,9 @@ function DropdownItem({ icon, label, onClick, danger }: { icon: string; label: s
         padding: '10px 16px',
         background: 'transparent',
         border: 'none',
-        color: danger ? '#ef4444' : 'var(--text-primary)',
+        color: danger ? '#ef4444' : active ? '#ffffff' : 'var(--text-primary)',
         fontFamily: 'var(--font-heading)',
-        fontWeight: 500,
+        fontWeight: active ? 700 : 500,
         fontSize: '0.88rem',
         cursor: 'pointer',
         textAlign: 'left',
@@ -357,3 +521,5 @@ function DropdownItem({ icon, label, onClick, danger }: { icon: string; label: s
     </button>
   );
 }
+
+

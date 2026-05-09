@@ -36,7 +36,7 @@ export default function Home() {
     setRememberMe(rememberMe);
 
     if (mode === 'register') {
-      const { error } = await supabaseClient.auth.signUp({
+      const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
         options: { data: { username } },
@@ -46,12 +46,24 @@ export default function Home() {
         setLoading(false);
         return;
       }
+      if (data.session?.user.id) {
+        await supabaseClient
+          .from('profiles')
+          .update({ status: 'online', last_seen: new Date().toISOString() })
+          .eq('id', data.session.user.id);
+      }
     } else {
-      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (error) {
         showToast({ type: 'error', title: 'Login Failed', message: error.message });
         setLoading(false);
         return;
+      }
+      if (data.session?.user.id) {
+        await supabaseClient
+          .from('profiles')
+          .update({ status: 'online', last_seen: new Date().toISOString() })
+          .eq('id', data.session.user.id);
       }
     }
     router.push('/dashboard');

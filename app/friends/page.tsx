@@ -1,22 +1,14 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "../../components/Navbar";
 import { supabaseClient } from "../../lib/supabase";
-
-type Profile = {
-  id: string;
-  username: string;
-  elo_rating: number;
-  avatar_url: string | null;
-};
-
-type FriendRow = {
-  user_id: string;
-  friend_id: string;
-  created_at: string;
-};
+import { deleteFriendship, fetchFriendSuggestions, searchProfilesByKeyword, type FriendProfileRow } from "../../lib/friendsService";
+import { parseUserStatus, statusSortWeight, type UserStatus } from "../../lib/statusUtils";
+import FriendSuggestions from "../../components/friends/FriendSuggestions";
+import ConfirmDeleteModal from "../../components/friends/ConfirmDeleteModal";
+import { FriendRow, SearchPlayerRow } from "../../components/friends/FriendRow";
 
 type FriendRequest = {
   id: string;
@@ -32,164 +24,198 @@ type GameInvite = {
   sender_id: string;
   receiver_id: string;
   room_id: string | null;
-  status: "pending" | "accepted" | "declined" | "cancelled";
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
   created_at: string;
   responded_at: string | null;
+  expires_at: string | null;
 };
 
-type RequestWithProfile = FriendRequest & {
-  profile?: Profile;
+type Profile = {
+  id: string;
+  username: string;
+  elo_rating: number;
+  avatar_url: string | null;
 };
 
-type InviteWithProfile = GameInvite & {
-  profile?: Profile;
+type RequestWithProfile = FriendRequest & { profile?: Profile };
+type InviteWithProfile = GameInvite & { profile?: Profile };
+
+type FriendListItem = {
+  profile: FriendProfileRow;
+  friendsSince: string;
 };
 
-function formatFriendError(message: string) {
-  const lower = message.toLowerCase();
+type BusyReason = "sender_busy" | "receiver_busy" | null;
 
+type FriendFilterTab = "all" | "online" | "offline";
+type FriendSortKey = "elo_desc" | "elo_asc" | "name_az" | "recent";
+
+function formatFriendError(message: string): string {
+  const normalized = String(message ?? "").trim();
+  if (!normalized || normalized === "{}" || normalized === "[]") {
+    return "Something went wrong. Please try again.";
+  }
+  const lower = normalized.toLowerCase();
+  if (lower.includes("sender_busy")) return "You are currently in a match or matchmaking.";
+  if (lower.includes("receiver_busy")) return "Your friend is in a match or matchmaking.";
   if (
     lower.includes("player_is_busy") ||
     lower.includes("one_player_already_in_match") ||
     lower.includes("one_player_already_matchmaking")
   ) {
-    return "Pemain sedang bermain atau sedang matchmaking.";
+    return "Player is in a match or matchmaking.";
   }
-
-  if (lower.includes("invite_already_pending")) {
-    return "Invite sudah dikirim dan masih pending.";
+  if (lower.includes("invite_expired")) return "That invite has expired.";
+  if (lower.includes("invite_cancelled")) return "That invite was cancelled.";
+  if (lower.includes("invite_already_resolved")) return "That invite has already been resolved.";
+  if (lower.includes("invite_already_pending")) return "An invite is already pending.";
+  if (lower.includes("request_already_pending")) return "A friend request is already pending.";
+  if (lower.includes("already_friends")) return "You are already friends with this player.";
+  if (lower.includes("not_friends")) return "You must be friends before sending a match invite.";
+  if (lower.includes("cannot_invite_yourself")) return "You cannot invite yourself.";
+  if (lower.includes("cannot_add_yourself")) return "You cannot add yourself.";
+  if (lower.includes("invite_not_found")) return "That invite is no longer available.";
+  if (lower.includes("request_not_found")) return "That friend request is no longer available.";
+  if (lower.includes("could not find the function") || lower.includes("function public.send_game_invite")) {
+    return "Invites are not available on the server yet. Apply the latest migrations.";
   }
-
-  if (lower.includes("request_already_pending")) {
-    return "Friend request sudah dikirim dan masih pending.";
-  }
-
-  if (lower.includes("already_friends")) {
-    return "Player ini sudah menjadi teman kamu.";
-  }
-
-  if (lower.includes("not_friends")) {
-    return "Kamu harus berteman dulu sebelum mengirim invite.";
-  }
-
-  if (lower.includes("cannot_invite_yourself")) {
-    return "Kamu tidak bisa invite diri sendiri.";
-  }
-
-  if (lower.includes("cannot_add_yourself")) {
-    return "Kamu tidak bisa menambahkan diri sendiri.";
-  }
-
-  if (lower.includes("invite_not_found")) {
-    return "Invite sudah tidak tersedia.";
-  }
-
-  if (lower.includes("request_not_found")) {
-    return "Friend request sudah tidak tersedia.";
-  }
-
-  return message || "Terjadi kesalahan.";
+  if (lower.includes("permission denied")) return "Permission denied. Sign in again and retry.";
+  return normalized || "Something went wrong.";
 }
 
-function getInitials(name: string) {
-  return name
-    .split("_")
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("")
-    .slice(0, 2);
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (typeof err === "string") {
+    const text = err.trim();
+    return text && text !== "{}" ? text : fallback;
+  }
+  if (err && typeof err === "object") {
+    const source = err as {
+      message?: unknown;
+      error_description?: unknown;
+      details?: unknown;
+      hint?: unknown;
+    };
+    const candidates = [source.message, source.error_description, source.details, source.hint];
+    for (const value of candidates) {
+      if (typeof value === "string") {
+        const text = value.trim();
+        if (text && text !== "{}") return text;
+      }
+    }
+    try {
+      const text = JSON.stringify(err);
+      if (text && text !== "{}") return text;
+    } catch {
+      /* ignore */
+    }
+  }
+  return fallback;
 }
 
-function Avatar({ profile }: { profile: Profile }) {
+const QUEUE_STALE_MS = 15 * 60 * 1000;
+const LOBBY_ACTIVITY_STALE_MS = 4 * 60 * 1000;
+
+type WaitingRoomRow = {
+  player1_id: string;
+  player2_id: string | null;
+  player1_last_heartbeat: string | null;
+  player2_last_heartbeat: string | null;
+  last_move_at: string | null;
+  created_at: string | null;
+};
+
+function waitingRowActiveForUser(row: WaitingRoomRow, userId: string, now: number): boolean {
+  if (row.player1_id === userId) {
+    const ts = row.player1_last_heartbeat ?? row.last_move_at ?? row.created_at;
+    const t = new Date(ts ?? 0).getTime();
+    return Number.isFinite(t) && now - t < LOBBY_ACTIVITY_STALE_MS;
+  }
+  if (row.player2_id === userId) {
+    const ts = row.player2_last_heartbeat ?? row.last_move_at ?? row.created_at;
+    const t = new Date(ts ?? 0).getTime();
+    return Number.isFinite(t) && now - t < LOBBY_ACTIVITY_STALE_MS;
+  }
+  return false;
+}
+
+async function checkInviteBusyState(meId: string, friendId: string): Promise<BusyReason> {
+  const now = Date.now();
+  const queueStaleCutoff = now - QUEUE_STALE_MS;
+  const cutoffIso = new Date(queueStaleCutoff).toISOString();
+
+  await supabaseClient.from("matchmaking_queue").delete().in("player_id", [meId, friendId]).lt("joined_at", cutoffIso);
+
+  const [ongoingRes, waitingRes, queueRes] = await Promise.all([
+    supabaseClient
+      .from("game_rooms")
+      .select("player1_id, player2_id")
+      .or(`player1_id.eq.${meId},player2_id.eq.${meId},player1_id.eq.${friendId},player2_id.eq.${friendId}`)
+      .eq("status", "ongoing")
+      .limit(20),
+    supabaseClient
+      .from("game_rooms")
+      .select("player1_id, player2_id, player1_last_heartbeat, player2_last_heartbeat, last_move_at, created_at")
+      .or(`player1_id.eq.${meId},player2_id.eq.${meId},player1_id.eq.${friendId},player2_id.eq.${friendId}`)
+      .eq("status", "waiting")
+      .limit(20),
+    supabaseClient.from("matchmaking_queue").select("player_id, joined_at").in("player_id", [meId, friendId]).limit(20),
+  ]);
+
+  const ongoingRows = ongoingRes.data ?? [];
+  const waitingRows = (waitingRes.data ?? []) as WaitingRoomRow[];
+  const queueRows = (queueRes.data ?? []).filter((row) => {
+    const joinedAt = new Date(row.joined_at ?? 0).getTime();
+    if (!Number.isFinite(joinedAt)) return false;
+    return joinedAt >= queueStaleCutoff;
+  });
+
+  const senderBusyInRoom = ongoingRows.some((row) => row.player1_id === meId || row.player2_id === meId);
+  const receiverBusyInRoom = ongoingRows.some((row) => row.player1_id === friendId || row.player2_id === friendId);
+  const senderWaitingInRoom = waitingRows.some((row) => waitingRowActiveForUser(row, meId, now));
+  const receiverWaitingInRoom = waitingRows.some((row) => waitingRowActiveForUser(row, friendId, now));
+  const senderBusyInQueue = queueRows.some((row) => row.player_id === meId);
+  const receiverBusyInQueue = queueRows.some((row) => row.player_id === friendId);
+
+  if (senderBusyInRoom || senderWaitingInRoom || senderBusyInQueue) return "sender_busy";
+  if (receiverBusyInRoom || receiverWaitingInRoom || receiverBusyInQueue) return "receiver_busy";
+  return null;
+}
+
+function EmptyBlock({ icon, title, hint }: { icon: string; title: string; hint: string }) {
   return (
-    <div
-      style={{
-        width: 44,
-        height: 44,
-        borderRadius: "50%",
-        overflow: "hidden",
-        background: profile.avatar_url
-          ? "transparent"
-          : "linear-gradient(135deg, rgba(124,58,237,0.8), rgba(245,158,11,0.8))",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        border: "2px solid rgba(124,58,237,0.25)",
-      }}
-    >
-      {profile.avatar_url ? (
-        <img
-          src={profile.avatar_url}
-          alt={profile.username}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
-        />
-      ) : (
-        <span
-          style={{
-            color: "white",
-            fontFamily: "var(--font-heading)",
-            fontWeight: 800,
-            fontSize: "0.82rem",
-          }}
-        >
-          {getInitials(profile.username)}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function PlayerLine({
-  profile,
-  subtitle,
-  right,
-}: {
-  profile: Profile;
-  subtitle?: string;
-  right?: React.ReactNode;
-}) {
-  return (
-    <div
-      className="card"
-      style={{
-        padding: "14px",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-      }}
-    >
-      <Avatar profile={profile} />
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontFamily: "var(--font-heading)",
-            fontWeight: 800,
-            color: "var(--text-primary)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {profile.username}
-        </div>
-
-        <div
-          style={{
-            color: "var(--text-muted)",
-            fontSize: "0.82rem",
-            marginTop: 2,
-          }}
-        >
-          {subtitle ?? `ELO ${profile.elo_rating ?? 1000}`}
-        </div>
+    <div className="fb-root">
+      <div className="fb-icon" aria-hidden>
+        {icon}
       </div>
-
-      {right}
+      <div className="fb-title">{title}</div>
+      <p className="fb-hint">{hint}</p>
+      <style jsx>{`
+        .fb-root {
+          text-align: center;
+          padding: 28px 16px 22px;
+        }
+        .fb-icon {
+          font-size: 2rem;
+          line-height: 1;
+          margin-bottom: 10px;
+        }
+        .fb-title {
+          font-family: var(--font-heading);
+          font-weight: 800;
+          font-size: 0.98rem;
+          color: #e2e8f0;
+          margin-bottom: 6px;
+        }
+        .fb-hint {
+          margin: 0;
+          font-size: 0.85rem;
+          line-height: 1.45;
+          color: rgba(148, 163, 184, 0.92);
+          max-width: 320px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+      `}</style>
     </div>
   );
 }
@@ -198,11 +224,12 @@ export default function FriendsPage() {
   const router = useRouter();
 
   const [meId, setMeId] = useState<string | null>(null);
+  const [myElo, setMyElo] = useState(1000);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [friends, setFriends] = useState<Profile[]>([]);
+  const [friendItems, setFriendItems] = useState<FriendListItem[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<RequestWithProfile[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<RequestWithProfile[]>([]);
   const [incomingInvites, setIncomingInvites] = useState<InviteWithProfile[]>([]);
@@ -210,12 +237,64 @@ export default function FriendsPage() {
 
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<Profile[]>([]);
+  const [searchResults, setSearchResults] = useState<FriendProfileRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const friendIds = useMemo(() => {
-    return new Set(friends.map((friend) => friend.id));
-  }, [friends]);
+  const [suggestions, setSuggestions] = useState<Pick<FriendProfileRow, "id" | "username" | "avatar_url" | "elo_rating">[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
+  const [friendFilter, setFriendFilter] = useState<FriendFilterTab>("all");
+  const [friendSort, setFriendSort] = useState<FriendSortKey>("recent");
+
+  const [deleteTarget, setDeleteTarget] = useState<FriendListItem | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const friendIds = useMemo(() => new Set(friendItems.map((f) => f.profile.id)), [friendItems]);
+  const friendIdListKey = useMemo(() => [...friendItems.map((f) => f.profile.id)].sort().join(","), [friendItems]);
+
+  const stats = useMemo(() => {
+    let online = 0;
+    let queue = 0;
+    let match = 0;
+    for (const { profile } of friendItems) {
+      const s = parseUserStatus(profile.status);
+      if (s === "online") online += 1;
+      if (s === "matchmaking") queue += 1;
+      if (s === "in_game") match += 1;
+    }
+    return { online, queue, match, total: friendItems.length };
+  }, [friendItems]);
+
+  const filteredSortedFriends = useMemo(() => {
+    let rows = [...friendItems];
+    if (friendFilter === "online") {
+      rows = rows.filter(({ profile }) => parseUserStatus(profile.status) !== "offline");
+    } else if (friendFilter === "offline") {
+      rows = rows.filter(({ profile }) => parseUserStatus(profile.status) === "offline");
+    }
+
+    rows.sort((a, b) => {
+      if (friendSort === "elo_desc") {
+        const d = (b.profile.elo_rating ?? 0) - (a.profile.elo_rating ?? 0);
+        if (d !== 0) return d;
+      } else if (friendSort === "elo_asc") {
+        const d = (a.profile.elo_rating ?? 0) - (b.profile.elo_rating ?? 0);
+        if (d !== 0) return d;
+      } else if (friendSort === "name_az") {
+        const d = a.profile.username.localeCompare(b.profile.username);
+        if (d !== 0) return d;
+      } else {
+        const d = new Date(b.friendsSince).getTime() - new Date(a.friendsSince).getTime();
+        if (d !== 0) return d;
+      }
+      const aw = statusSortWeight(parseUserStatus(a.profile.status));
+      const bw = statusSortWeight(parseUserStatus(b.profile.status));
+      if (aw !== bw) return aw - bw;
+      return a.profile.username.localeCompare(b.profile.username);
+    });
+
+    return rows;
+  }, [friendItems, friendFilter, friendSort]);
 
   function showNotice(message: string) {
     setNotice(message);
@@ -223,250 +302,233 @@ export default function FriendsPage() {
   }
 
   function redirectToRoom(roomId: string) {
-    const currentPath =
-      typeof window !== "undefined" ? window.location.pathname : "";
-
+    const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
     if (currentPath === `/game/${roomId}`) return;
-
-    showNotice("⚔️ Match accepted! Starting game...");
-
-    setTimeout(() => {
-      router.push(`/game/${roomId}`);
-    }, 700);
+    showNotice("Match accepted. Starting game…");
+    setTimeout(() => router.push(`/game/${roomId}`), 700);
   }
 
-  async function fetchProfiles(ids: string[]) {
+  async function fetchProfiles(ids: string[]): Promise<Map<string, Profile>> {
     const uniqueIds = [...new Set(ids)].filter(Boolean);
-
-    if (uniqueIds.length === 0) {
-      return new Map<string, Profile>();
-    }
-
-    const { data, error } = await supabaseClient
+    if (uniqueIds.length === 0) return new Map();
+    const { data, error: err } = await supabaseClient
       .from("profiles")
       .select("id, username, elo_rating, avatar_url")
       .in("id", uniqueIds);
-
-    if (error) throw error;
-
-    return new Map(
-      (data ?? []).map((profile) => [profile.id, profile as Profile])
-    );
+    if (err) throw err;
+    return new Map((data ?? []).map((p) => [p.id, p as Profile]));
   }
+
+  const refreshSuggestions = useCallback(async (uid: string, elo: number, exclude: string[]) => {
+    try {
+      setSuggestionsLoading(true);
+      const rows = await fetchFriendSuggestions(uid, elo, exclude, 3);
+      setSuggestions(rows);
+    } catch (e) {
+      console.error(e);
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
       setError(null);
-
-      const { data: sessionData, error: sessionError } =
-        await supabaseClient.auth.getSession();
-
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
       if (sessionError) throw sessionError;
-
       const session = sessionData.session;
-
       if (!session) {
         router.push("/");
         return;
       }
-
       const uid = session.user.id;
       setMeId(uid);
 
+      const { data: meProfile, error: meErr } = await supabaseClient
+        .from("profiles")
+        .select("elo_rating")
+        .eq("id", uid)
+        .single();
+      if (meErr) throw meErr;
+      const elo = meProfile?.elo_rating ?? 1000;
+      setMyElo(elo);
+
       const [friendRes, requestRes, inviteRes] = await Promise.all([
-        supabaseClient
-          .from("friends")
-          .select("user_id, friend_id, created_at")
-          .eq("user_id", uid)
-          .order("created_at", { ascending: false }),
-
-        supabaseClient
-          .from("friend_requests")
-          .select("*")
-          .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-          .order("created_at", { ascending: false }),
-
-        supabaseClient
-          .from("game_invites")
-          .select("*")
-          .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-          .order("created_at", { ascending: false }),
+        supabaseClient.from("friends").select("user_id, friend_id, created_at").eq("user_id", uid).order("created_at", { ascending: false }),
+        supabaseClient.from("friend_requests").select("*").or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).order("created_at", { ascending: false }),
+        supabaseClient.from("game_invites").select("*").or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).order("created_at", { ascending: false }),
       ]);
 
       if (friendRes.error) throw friendRes.error;
       if (requestRes.error) throw requestRes.error;
       if (inviteRes.error) throw inviteRes.error;
 
-      const friendRows = (friendRes.data ?? []) as FriendRow[];
+      const friendRows = (friendRes.data ?? []) as { user_id: string; friend_id: string; created_at: string }[];
       const requestRows = (requestRes.data ?? []) as FriendRequest[];
       const inviteRows = (inviteRes.data ?? []) as GameInvite[];
 
+      const friendProfileIds = friendRows.map((r) => r.friend_id);
       const profileIds = [
-        ...friendRows.map((row) => row.friend_id),
-        ...requestRows.map((row) => row.sender_id),
-        ...requestRows.map((row) => row.receiver_id),
-        ...inviteRows.map((row) => row.sender_id),
-        ...inviteRows.map((row) => row.receiver_id),
+        ...friendProfileIds,
+        ...requestRows.map((r) => r.sender_id),
+        ...requestRows.map((r) => r.receiver_id),
+        ...inviteRows.map((r) => r.sender_id),
+        ...inviteRows.map((r) => r.receiver_id),
       ];
 
       const profileMap = await fetchProfiles(profileIds);
 
-      setFriends(
-        friendRows
-          .map((row) => profileMap.get(row.friend_id))
-          .filter(Boolean) as Profile[]
-      );
+      let fpById = new Map<string, FriendProfileRow>();
+      if (friendProfileIds.length > 0) {
+        const { data: friendProfilesRaw, error: fpErr } = await supabaseClient
+          .from("profiles")
+          .select("id, username, elo_rating, avatar_url, status, last_seen")
+          .in("id", friendProfileIds);
+        if (fpErr) throw fpErr;
+        fpById = new Map((friendProfilesRaw ?? []).map((row) => [row.id, row as FriendProfileRow]));
+      }
+
+      const items: FriendListItem[] = friendRows
+        .map((row) => {
+          const p = fpById.get(row.friend_id);
+          if (!p) return null;
+          return { profile: p, friendsSince: row.created_at };
+        })
+        .filter(Boolean) as FriendListItem[];
+
+      setFriendItems(items);
 
       setIncomingRequests(
         requestRows
           .filter((row) => row.receiver_id === uid && row.status === "pending")
-          .map((row) => ({
-            ...row,
-            profile: profileMap.get(row.sender_id),
-          }))
+          .map((row) => ({ ...row, profile: profileMap.get(row.sender_id) }))
       );
-
       setOutgoingRequests(
         requestRows
           .filter((row) => row.sender_id === uid && row.status === "pending")
-          .map((row) => ({
-            ...row,
-            profile: profileMap.get(row.receiver_id),
-          }))
+          .map((row) => ({ ...row, profile: profileMap.get(row.receiver_id) }))
       );
-
       setIncomingInvites(
         inviteRows
           .filter((row) => row.receiver_id === uid && row.status === "pending")
-          .map((row) => ({
-            ...row,
-            profile: profileMap.get(row.sender_id),
-          }))
+          .map((row) => ({ ...row, profile: profileMap.get(row.sender_id) }))
       );
-
       setOutgoingInvites(
         inviteRows
           .filter((row) => row.sender_id === uid && row.status === "pending")
-          .map((row) => ({
-            ...row,
-            profile: profileMap.get(row.receiver_id),
-          }))
+          .map((row) => ({ ...row, profile: profileMap.get(row.receiver_id) }))
       );
-    } catch (err: any) {
-      console.error("Failed to load friends:", err);
-      setError(formatFriendError(err?.message || "Failed to load friends"));
+
+      const exclude = [...friendProfileIds, uid];
+      void refreshSuggestions(uid, elo, exclude);
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Failed to load friends")));
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, refreshSuggestions]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
+
+  const profileChannelRef = useRef<ReturnType<typeof supabaseClient.channel> | null>(null);
+
+  useEffect(() => {
+    if (!meId || friendItems.length === 0) return;
+    const ids = friendIdListKey.split(",").filter(Boolean);
+    if (ids.length === 0) return;
+    const filter = `id=in.(${ids.join(",")})`;
+    const ch = supabaseClient
+      .channel(`friends-profiles-${meId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter },
+        (payload: { new: Record<string, unknown> }) => {
+          const row = payload.new as FriendProfileRow;
+          if (!row?.id) return;
+          setFriendItems((prev) =>
+            prev.map((item) =>
+              item.profile.id === row.id
+                ? {
+                    ...item,
+                    profile: {
+                      ...item.profile,
+                      status: row.status ?? item.profile.status,
+                      last_seen: row.last_seen ?? item.profile.last_seen,
+                      elo_rating: typeof row.elo_rating === "number" ? row.elo_rating : item.profile.elo_rating,
+                      username: row.username ?? item.profile.username,
+                      avatar_url: row.avatar_url ?? item.profile.avatar_url,
+                    },
+                  }
+                : item
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    profileChannelRef.current = ch;
+    return () => {
+      if (profileChannelRef.current) {
+        supabaseClient.removeChannel(profileChannelRef.current);
+        profileChannelRef.current = null;
+      }
+    };
+  }, [meId, friendIdListKey, friendItems.length]);
 
   useEffect(() => {
     if (!meId) return;
-
     const channel = supabaseClient
       .channel(`friends-page-${meId}`)
-
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "friend_requests",
-          filter: `receiver_id=eq.${meId}`,
-        },
+        { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${meId}` },
+        () => loadData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friend_requests", filter: `sender_id=eq.${meId}` },
+        () => loadData()
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${meId}` }, () =>
+        loadData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "game_invites", filter: `receiver_id=eq.${meId}` },
         () => {
           loadData();
+          showNotice("You have a new match invite.");
         }
       )
-
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "friend_requests",
-          filter: `sender_id=eq.${meId}`,
-        },
-        () => {
-          loadData();
-        }
-      )
-
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "friends",
-          filter: `user_id=eq.${meId}`,
-        },
-        () => {
-          loadData();
-        }
-      )
-
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "game_invites",
-          filter: `receiver_id=eq.${meId}`,
-        },
-        () => {
-          loadData();
-          showNotice("⚔️ Kamu mendapat match invite baru.");
-        }
-      )
-
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "game_invites",
-          filter: `receiver_id=eq.${meId}`,
-        },
-        (payload: any) => {
-          const row = payload.new as GameInvite;
-
+        { event: "UPDATE", schema: "public", table: "game_invites", filter: `receiver_id=eq.${meId}` },
+        (payload: { new: GameInvite }) => {
+          const row = payload.new;
           if (row.status === "accepted" && row.room_id) {
             redirectToRoom(row.room_id);
             return;
           }
-
           loadData();
         }
       )
-
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "game_invites",
-          filter: `sender_id=eq.${meId}`,
-        },
-        (payload: any) => {
-          const row = payload.new as GameInvite;
-
+        { event: "UPDATE", schema: "public", table: "game_invites", filter: `sender_id=eq.${meId}` },
+        (payload: { new: GameInvite }) => {
+          const row = payload.new;
           if (row.status === "accepted" && row.room_id) {
             redirectToRoom(row.room_id);
             return;
           }
-
-          if (row.status === "declined") {
-            showNotice("Invite ditolak.");
-          }
-
+          if (row.status === "declined") showNotice("Invite declined.");
           loadData();
         }
       )
-
       .subscribe();
 
     return () => {
@@ -474,35 +536,21 @@ export default function FriendsPage() {
     };
   }, [meId, loadData, router]);
 
-  async function searchPlayers(e?: React.FormEvent) {
-    e?.preventDefault();
-
+  async function runSearch() {
     if (!meId) return;
-
     const keyword = search.trim();
-
     if (keyword.length < 2) {
       setSearchResults([]);
       return;
     }
-
     try {
       setSearching(true);
       setError(null);
-
-      const { data, error } = await supabaseClient
-        .from("profiles")
-        .select("id, username, elo_rating, avatar_url")
-        .ilike("username", `%${keyword}%`)
-        .neq("id", meId)
-        .limit(12);
-
-      if (error) throw error;
-
-      setSearchResults((data ?? []) as Profile[]);
-    } catch (err: any) {
-      console.error("Search failed:", err);
-      setError(formatFriendError(err?.message || "Search failed"));
+      const rows = await searchProfilesByKeyword(meId, keyword, 12);
+      setSearchResults(rows);
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Search failed")));
     } finally {
       setSearching(false);
     }
@@ -512,19 +560,14 @@ export default function FriendsPage() {
     try {
       setActionLoading(`add-${profileId}`);
       setError(null);
-
-      const { error } = await supabaseClient.rpc("send_friend_request", {
-        input_receiver_id: profileId,
-      });
-
-      if (error) throw error;
-
-      showNotice("Friend request berhasil dikirim.");
+      const { error: err } = await supabaseClient.rpc("send_friend_request", { input_receiver_id: profileId });
+      if (err) throw err;
+      showNotice("Friend request sent.");
       await loadData();
-      await searchPlayers();
-    } catch (err: any) {
-      console.error("Add friend failed:", err);
-      setError(formatFriendError(err?.message || "Add friend failed"));
+      if (search.trim().length >= 2) await runSearch();
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not send friend request")));
     } finally {
       setActionLoading(null);
     }
@@ -534,19 +577,16 @@ export default function FriendsPage() {
     try {
       setActionLoading(`friend-${requestId}`);
       setError(null);
-
-      const { error } = await supabaseClient.rpc("respond_friend_request", {
+      const { error: err } = await supabaseClient.rpc("respond_friend_request", {
         input_request_id: requestId,
         input_accept: accept,
       });
-
-      if (error) throw error;
-
-      showNotice(accept ? "Friend request diterima." : "Friend request ditolak.");
+      if (err) throw err;
+      showNotice(accept ? "Friend request accepted." : "Friend request declined.");
       await loadData();
-    } catch (err: any) {
-      console.error("Respond friend request failed:", err);
-      setError(formatFriendError(err?.message || "Failed to respond friend request"));
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not respond to request")));
     } finally {
       setActionLoading(null);
     }
@@ -556,18 +596,32 @@ export default function FriendsPage() {
     try {
       setActionLoading(`invite-${friendId}`);
       setError(null);
-
-      const { error } = await supabaseClient.rpc("send_game_invite", {
-        input_receiver_id: friendId,
-      });
-
-      if (error) throw error;
-
-      showNotice("Match invite berhasil dikirim.");
+      if (!meId) throw new Error("Sign in required.");
+      // Server handles all busy checks with specific error codes
+      await supabaseClient.rpc("expire_stale_invites");
+      const { error: err } = await supabaseClient.rpc("send_game_invite", { input_receiver_id: friendId });
+      if (err) throw err;
+      showNotice("Match invite sent.");
       await loadData();
-    } catch (err: any) {
-      console.error("Invite friend failed:", err);
-      setError(formatFriendError(err?.message || "Invite friend failed"));
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not send invite")));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function cancelInvite(inviteId: string) {
+    try {
+      setActionLoading(`cancel-${inviteId}`);
+      setError(null);
+      const { error: err } = await supabaseClient.rpc("cancel_game_invite", { input_invite_id: inviteId });
+      if (err) throw err;
+      showNotice("Invite cancelled.");
+      await loadData();
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not cancel invite")));
     } finally {
       setActionLoading(null);
     }
@@ -577,29 +631,36 @@ export default function FriendsPage() {
     try {
       setActionLoading(`game-${inviteId}`);
       setError(null);
-
-      const { data: roomId, error } = await supabaseClient.rpc(
-        "respond_game_invite",
-        {
-          input_invite_id: inviteId,
-          input_accept: accept,
-        }
-      );
-
-      if (error) throw error;
-
+      const { data: roomId, error: err } = await supabaseClient.rpc("respond_game_invite", {
+        input_invite_id: inviteId,
+        input_accept: accept,
+      });
+      if (err) throw err;
       await loadData();
-
-      if (accept && roomId) {
-        redirectToRoom(roomId);
-      } else {
-        showNotice("Invite ditolak.");
-      }
-    } catch (err: any) {
-      console.error("Respond game invite failed:", err);
-      setError(formatFriendError(err?.message || "Failed to respond game invite"));
+      if (accept && roomId) redirectToRoom(roomId as string);
+      else showNotice("Invite declined.");
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not respond to invite")));
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function confirmRemoveFriend() {
+    if (!meId || !deleteTarget) return;
+    try {
+      setDeleteLoading(true);
+      setError(null);
+      await deleteFriendship(meId, deleteTarget.profile.id);
+      showNotice("Friend removed.");
+      setDeleteTarget(null);
+      await loadData();
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not remove friend")));
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -607,16 +668,7 @@ export default function FriendsPage() {
     return (
       <>
         <Navbar />
-
-        <div
-          className="page-container"
-          style={{
-            minHeight: "100vh",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
+        <div className="page-container" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ textAlign: "center" }}>
             <div
               className="animate-spin-slow"
@@ -629,15 +681,7 @@ export default function FriendsPage() {
                 margin: "0 auto 14px",
               }}
             />
-
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontFamily: "var(--font-heading)",
-              }}
-            >
-              Loading friends...
-            </div>
+            <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-heading)" }}>Loading friends…</div>
           </div>
         </div>
       </>
@@ -647,448 +691,733 @@ export default function FriendsPage() {
   return (
     <>
       <Navbar />
-
-      <div
-        className="animate-fade-in"
-        style={{
-          paddingTop: "calc(var(--navbar-height) + 32px)",
-          paddingBottom: "32px",
-          paddingLeft: "24px",
-          paddingRight: "24px",
-          minHeight: "100vh",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>👥</div>
-
-            <h1
-              style={{
-                fontFamily: "var(--font-heading)",
-                fontWeight: 800,
-                fontSize: "2rem",
-                color: "var(--text-primary)",
-                margin: 0,
-              }}
-            >
-              Friends
-            </h1>
-
-            <p
-              style={{
-                color: "var(--text-muted)",
-                marginTop: 8,
-                fontSize: "0.92rem",
-              }}
-            >
-              Search players, add friends, invite them, and start a private match.
-            </p>
-          </div>
-
-          {notice && (
-            <div
-              className="card animate-fade-in"
-              style={{
-                marginBottom: 18,
-                padding: 14,
-                borderColor: "rgba(16,185,129,0.35)",
-                color: "#10b981",
-                fontFamily: "var(--font-heading)",
-                fontWeight: 800,
-              }}
-            >
-              {notice}
+      <div className="fp-shell animate-fade-in">
+        <div className="fp-container">
+          <section className="card fp-hero">
+            <div className="fp-hero-copy">
+              <span className="fp-kicker">SOCIAL HUB</span>
+              <h1 className="fp-title">Friends</h1>
+              <p className="fp-desc">Find players, manage requests, and start private matches.</p>
             </div>
-          )}
-
-          {error && (
-            <div
-              className="card"
-              style={{
-                marginBottom: 18,
-                padding: 14,
-                borderColor: "rgba(239,68,68,0.35)",
-                color: "#ef4444",
-              }}
-            >
-              {error}
+            <div className="fp-stats">
+              <div className="fp-st fp-st-friends">
+                <span className="fp-st-ico" aria-hidden>
+                  {"\u{1F465}"}
+                </span>
+                <div className="fp-st-body">
+                  <strong className="fp-st-num fp-num-white">{stats.total}</strong>
+                  <span className="fp-st-label">Friends</span>
+                </div>
+              </div>
+              <div className="fp-st fp-st-on">
+                <span className="fp-st-ico" aria-hidden>
+                  {"\u{1F7E2}"}
+                </span>
+                <div className="fp-st-body">
+                  <strong className="fp-st-num fp-num-green">{stats.online}</strong>
+                  <span className="fp-st-label">Online</span>
+                </div>
+              </div>
+              <div className="fp-st fp-st-q">
+                <span className="fp-st-ico" aria-hidden>
+                  {"\u{1F7E1}"}
+                </span>
+                <div className="fp-st-body">
+                  <strong className="fp-st-num fp-num-amber">{stats.queue}</strong>
+                  <span className="fp-st-label">Queue</span>
+                </div>
+              </div>
+              <div className="fp-st fp-st-m">
+                <span className="fp-st-ico" aria-hidden>
+                  {"\u{1F534}"}
+                </span>
+                <div className="fp-st-body">
+                  <strong className="fp-st-num fp-num-red">{stats.match}</strong>
+                  <span className="fp-st-label">Match</span>
+                </div>
+              </div>
             </div>
-          )}
+          </section>
 
-          {/* SEARCH PLAYER */}
-          <div className="card" style={{ padding: 18, marginBottom: 18 }}>
-            <div
-              style={{
-                fontFamily: "var(--font-heading)",
-                fontWeight: 800,
-                color: "var(--text-primary)",
-                marginBottom: 12,
-              }}
-            >
-              🔎 Search Player
+          {notice ? <div className="card fp-alert success">{notice}</div> : null}
+          {error ? <div className="card fp-alert danger">{error}</div> : null}
+
+          <div className="fp-grid">
+            <div className="fp-main">
+              <section className="card fp-panel">
+                <div className="fp-head">
+                  <span className="fp-head-title">Find players</span>
+                  <small>Type at least 2 characters</small>
+                </div>
+                <div className="fp-search-wrap">
+                  <input
+                    className="fp-search-input"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && void runSearch()}
+                    placeholder="Search by username…"
+                    aria-label="Search players"
+                  />
+                  <button type="button" className="fp-search-btn" disabled={searching} onClick={() => void runSearch()} aria-label="Search">
+                    {searching ? "…" : "\u{1F50D}"}
+                  </button>
+                </div>
+                <div className="fp-list">
+                  {searching ? (
+                    <EmptyBlock icon={"\u2728"} title="Searching…" hint="Looking for matching usernames." />
+                  ) : search.trim().length < 2 ? (
+                    <EmptyBlock
+                      icon={"\u{1F50D}"}
+                      title="Find your next duel"
+                      hint="Enter at least two characters, then search."
+                    />
+                  ) : searchResults.length === 0 ? (
+                    <EmptyBlock icon={"\u{1F50D}"} title="No players found." hint="Try a different keyword or spelling." />
+                  ) : (
+                    searchResults.map((p) => {
+                      const already = friendIds.has(p.id);
+                      const outgoingPending = outgoingRequests.some((r) => r.receiver_id === p.id);
+                      const incomingPending = incomingRequests.some((r) => r.sender_id === p.id);
+                      return (
+                        <SearchPlayerRow
+                          key={p.id}
+                          profile={p}
+                          right={
+                            already ? (
+                              <span className="fp-badge disabled">Already friends</span>
+                            ) : outgoingPending ? (
+                              <span className="fp-badge disabled">Request sent</span>
+                            ) : incomingPending ? (
+                              <span className="fp-badge violet">Incoming request</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-primary fp-mini"
+                                disabled={actionLoading === `add-${p.id}`}
+                                onClick={() => addFriend(p.id)}
+                              >
+                                {actionLoading === `add-${p.id}` ? "…" : "Add friend"}
+                              </button>
+                            )
+                          }
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <section className="card fp-panel">
+                <div className="fp-head fp-head-row">
+                  <div className="fp-head-block">
+                    <span className="fp-head-title">Friends</span>
+                    <small className="fp-head-sub">{friendItems.length} total</small>
+                  </div>
+                </div>
+                <div className="fp-toolbar">
+                  <div className="fp-pills">
+                    {(
+                      [
+                        ["all", "All"],
+                        ["online", "Online"],
+                        ["offline", "Offline"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`fp-pill ${friendFilter === key ? "is-on" : ""}`}
+                        onClick={() => setFriendFilter(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <select className="fp-select" value={friendSort} onChange={(e) => setFriendSort(e.target.value as FriendSortKey)}>
+                    <option value="recent">Recent</option>
+                    <option value="elo_desc">ELO high → low</option>
+                    <option value="elo_asc">ELO low → high</option>
+                    <option value="name_az">Name A–Z</option>
+                  </select>
+                </div>
+                <div className="fp-list fp-friends-list">
+                  {friendItems.length === 0 ? (
+                    <EmptyBlock
+                      icon={"\u{1F465}"}
+                      title="No friends yet"
+                      hint="Search for players above and send a friend request."
+                    />
+                  ) : filteredSortedFriends.length === 0 ? (
+                    <EmptyBlock icon={"\u{1F644}"} title="No one in this filter" hint="Try another tab or clear filters." />
+                  ) : (
+                    filteredSortedFriends.map(({ profile: p }) => {
+                      const st = parseUserStatus(p.status);
+                      const pendingInv = outgoingInvites.some((i) => i.receiver_id === p.id);
+                      return (
+                        <FriendRow
+                          key={p.id}
+                          profile={p}
+                          status={st}
+                          lastSeen={p.last_seen}
+                          pendingOutgoingInvite={pendingInv}
+                          inviteLoading={actionLoading === `invite-${p.id}`}
+                          onProfile={() => router.push(`/profile/${encodeURIComponent(p.username)}`)}
+                          onInvite={() => inviteFriend(p.id)}
+                          onRemove={() => setDeleteTarget({ profile: p, friendsSince: friendItems.find((x) => x.profile.id === p.id)?.friendsSince ?? "" })}
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </section>
             </div>
 
-            <form
-              onSubmit={searchPlayers}
-              style={{
-                display: "flex",
-                gap: 10,
-                marginBottom: 14,
-              }}
-            >
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search username..."
-                style={{
-                  flex: 1,
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  background: "rgba(255,255,255,0.04)",
-                  color: "var(--text-primary)",
-                  outline: "none",
-                }}
+            <aside className="fp-side">
+              <section className="card fp-panel">
+                <div className="fp-head">
+                  <span className="fp-head-title">Friend requests</span>
+                  {incomingRequests.length > 0 ? <small className="fp-ping">{incomingRequests.length} new</small> : <small>No new</small>}
+                </div>
+                <div className="fp-list">
+                  {incomingRequests.length === 0 ? (
+                    <EmptyBlock
+                      icon={"\u{1F4ED}"}
+                      title="Inbox clear"
+                      hint="New requests will appear here."
+                    />
+                  ) : (
+                    incomingRequests.map((req) =>
+                      req.profile ? (
+                        <div key={req.id} className="fp-inbox-row">
+                          <SearchPlayerRow
+                            profile={req.profile}
+                            right={
+                              <div className="fp-inbox-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-success fp-mini"
+                                  disabled={actionLoading === `friend-${req.id}`}
+                                  onClick={() => respondFriendRequest(req.id, true)}
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost fp-mini"
+                                  disabled={actionLoading === `friend-${req.id}`}
+                                  onClick={() => respondFriendRequest(req.id, false)}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            }
+                          />
+                        </div>
+                      ) : null
+                    )
+                  )}
+                </div>
+              </section>
+
+              <section className="card fp-panel">
+                <div className="fp-head">
+                  <span className="fp-head-title">Match invites</span>
+                  <small>{incomingInvites.length} pending</small>
+                </div>
+                <div className="fp-list">
+                  {incomingInvites.length === 0 ? (
+                    <EmptyBlock icon={"\u2694"} title="No duels pending" hint="Private invites show up here." />
+                  ) : (
+                    incomingInvites.map((inv) =>
+                      inv.profile ? (
+                        <div key={inv.id} className="fp-inbox-row">
+                          <SearchPlayerRow
+                            profile={inv.profile}
+                            right={
+                              <div className="fp-inbox-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary fp-mini"
+                                  disabled={actionLoading === `game-${inv.id}`}
+                                  onClick={() => respondGameInvite(inv.id, true)}
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost fp-mini"
+                                  disabled={actionLoading === `game-${inv.id}`}
+                                  onClick={() => respondGameInvite(inv.id, false)}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            }
+                          />
+                        </div>
+                      ) : null
+                    )
+                  )}
+                </div>
+              </section>
+
+              {(outgoingRequests.length > 0 || outgoingInvites.length > 0) && (
+                <section className="card fp-panel fp-wait">
+                  <div className="fp-head">
+                    <span className="fp-head-title">Waiting</span>
+                    <small>Total {outgoingRequests.length + outgoingInvites.length}</small>
+                  </div>
+                  <div className="fp-wait-body">
+                    {outgoingRequests.map((req) =>
+                      req.profile ? (
+                        <div key={req.id} className="fp-wait-line">
+                          Friend request to <b>{req.profile.username}</b>
+                        </div>
+                      ) : null
+                    )}
+                    {outgoingInvites.map((inv) =>
+                      inv.profile ? (
+                        <div key={inv.id} className="fp-wait-line" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                          <span>Match invite to <b>{inv.profile.username}</b></span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost fp-mini"
+                            disabled={actionLoading === `cancel-${inv.id}`}
+                            onClick={() => cancelInvite(inv.id)}
+                            style={{ color: "#ef4444", flexShrink: 0 }}
+                          >
+                            {actionLoading === `cancel-${inv.id}` ? "…" : "Cancel"}
+                          </button>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                </section>
+              )}
+
+              <FriendSuggestions
+                suggestions={suggestions}
+                loading={suggestionsLoading}
+                actionLoadingId={actionLoading?.startsWith("add-") ? actionLoading.slice(4) : null}
+                onAdd={(id) => addFriend(id)}
               />
 
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={searching}
-                style={{ minWidth: 110 }}
-              >
-                {searching ? "Searching..." : "Search"}
+              <button type="button" className="btn btn-ghost fp-back" onClick={() => router.push("/dashboard")}>
+                ← Dashboard
               </button>
-            </form>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {searchResults.length === 0 ? (
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: "0.85rem",
-                    textAlign: "center",
-                    padding: "10px 0",
-                  }}
-                >
-                  Search username minimal 2 karakter.
-                </div>
-              ) : (
-                searchResults.map((profile) => {
-                  const alreadyFriend = friendIds.has(profile.id);
-                  const outgoingPending = outgoingRequests.some(
-                    (req) => req.receiver_id === profile.id
-                  );
-                  const incomingPending = incomingRequests.some(
-                    (req) => req.sender_id === profile.id
-                  );
-
-                  return (
-                    <PlayerLine
-                      key={profile.id}
-                      profile={profile}
-                      right={
-                        alreadyFriend ? (
-                          <span
-                            style={{
-                              color: "#10b981",
-                              fontFamily: "var(--font-heading)",
-                              fontWeight: 800,
-                              fontSize: "0.82rem",
-                            }}
-                          >
-                            Friend
-                          </span>
-                        ) : outgoingPending ? (
-                          <span
-                            style={{
-                              color: "#f59e0b",
-                              fontFamily: "var(--font-heading)",
-                              fontWeight: 800,
-                              fontSize: "0.82rem",
-                            }}
-                          >
-                            Pending
-                          </span>
-                        ) : incomingPending ? (
-                          <span
-                            style={{
-                              color: "#a78bfa",
-                              fontFamily: "var(--font-heading)",
-                              fontWeight: 800,
-                              fontSize: "0.82rem",
-                            }}
-                          >
-                            Request masuk
-                          </span>
-                        ) : (
-                          <button
-                            className="btn btn-secondary"
-                            disabled={actionLoading === `add-${profile.id}`}
-                            onClick={() => addFriend(profile.id)}
-                          >
-                            {actionLoading === `add-${profile.id}`
-                              ? "Adding..."
-                              : "Add"}
-                          </button>
-                        )
-                      }
-                    />
-                  );
-                })
-              )}
-            </div>
+            </aside>
           </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: 18,
-            }}
-          >
-            {/* FRIEND REQUESTS */}
-            <div className="card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  fontFamily: "var(--font-heading)",
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "var(--text-primary)",
-                }}
-              >
-                📩 Friend Requests
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {incomingRequests.length === 0 ? (
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    Tidak ada request masuk.
-                  </div>
-                ) : (
-                  incomingRequests.map((req) =>
-                    req.profile ? (
-                      <PlayerLine
-                        key={req.id}
-                        profile={req.profile}
-                        subtitle="Wants to be your friend"
-                        right={
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              className="btn btn-success"
-                              disabled={actionLoading === `friend-${req.id}`}
-                              onClick={() => respondFriendRequest(req.id, true)}
-                            >
-                              Accept
-                            </button>
-
-                            <button
-                              className="btn btn-ghost"
-                              disabled={actionLoading === `friend-${req.id}`}
-                              onClick={() => respondFriendRequest(req.id, false)}
-                            >
-                              Decline
-                            </button>
-                          </div>
-                        }
-                      />
-                    ) : null
-                  )
-                )}
-              </div>
-            </div>
-
-            {/* GAME INVITES */}
-            <div className="card" style={{ padding: 18 }}>
-              <div
-                style={{
-                  fontFamily: "var(--font-heading)",
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "var(--text-primary)",
-                }}
-              >
-                ⚔️ Game Invites
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {incomingInvites.length === 0 ? (
-                  <div
-                    style={{
-                      color: "var(--text-muted)",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    Tidak ada invite match.
-                  </div>
-                ) : (
-                  incomingInvites.map((invite) =>
-                    invite.profile ? (
-                      <PlayerLine
-                        key={invite.id}
-                        profile={invite.profile}
-                        subtitle="Invited you to a match"
-                        right={
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              className="btn btn-primary"
-                              disabled={actionLoading === `game-${invite.id}`}
-                              onClick={() => respondGameInvite(invite.id, true)}
-                            >
-                              Accept
-                            </button>
-
-                            <button
-                              className="btn btn-ghost"
-                              disabled={actionLoading === `game-${invite.id}`}
-                              onClick={() => respondGameInvite(invite.id, false)}
-                            >
-                              Decline
-                            </button>
-                          </div>
-                        }
-                      />
-                    ) : null
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* FRIEND LIST */}
-          <div className="card" style={{ padding: 18, marginTop: 18 }}>
-            <div
-              style={{
-                fontFamily: "var(--font-heading)",
-                fontWeight: 800,
-                marginBottom: 12,
-                color: "var(--text-primary)",
-              }}
-            >
-              👥 Your Friends
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {friends.length === 0 ? (
-                <div
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: "0.85rem",
-                    textAlign: "center",
-                    padding: "16px 0",
-                  }}
-                >
-                  Belum ada teman. Search player lalu klik Add.
-                </div>
-              ) : (
-                friends.map((friend) => {
-                  const alreadyInvited = outgoingInvites.some(
-                    (invite) => invite.receiver_id === friend.id
-                  );
-
-                  return (
-                    <PlayerLine
-                      key={friend.id}
-                      profile={friend}
-                      right={
-                        alreadyInvited ? (
-                          <span
-                            style={{
-                              color: "#f59e0b",
-                              fontFamily: "var(--font-heading)",
-                              fontWeight: 800,
-                              fontSize: "0.82rem",
-                            }}
-                          >
-                            Invite sent
-                          </span>
-                        ) : (
-                          <button
-                            className="btn btn-primary"
-                            disabled={actionLoading === `invite-${friend.id}`}
-                            onClick={() => inviteFriend(friend.id)}
-                          >
-                            {actionLoading === `invite-${friend.id}`
-                              ? "Inviting..."
-                              : "Invite"}
-                          </button>
-                        )
-                      }
-                    />
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* PENDING INFO */}
-          {(outgoingRequests.length > 0 || outgoingInvites.length > 0) && (
-            <div className="card" style={{ padding: 18, marginTop: 18 }}>
-              <div
-                style={{
-                  fontFamily: "var(--font-heading)",
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "var(--text-primary)",
-                }}
-              >
-                ⏳ Pending
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {outgoingRequests.map((req) =>
-                  req.profile ? (
-                    <div
-                      key={req.id}
-                      style={{
-                        color: "var(--text-muted)",
-                        fontSize: "0.86rem",
-                      }}
-                    >
-                      Friend request sent to{" "}
-                      <b style={{ color: "var(--text-primary)" }}>
-                        {req.profile.username}
-                      </b>
-                    </div>
-                  ) : null
-                )}
-
-                {outgoingInvites.map((invite) =>
-                  invite.profile ? (
-                    <div
-                      key={invite.id}
-                      style={{
-                        color: "var(--text-muted)",
-                        fontSize: "0.86rem",
-                      }}
-                    >
-                      Match invite sent to{" "}
-                      <b style={{ color: "var(--text-primary)" }}>
-                        {invite.profile.username}
-                      </b>
-                    </div>
-                  ) : null
-                )}
-              </div>
-            </div>
-          )}
-
-          <button
-            className="btn btn-ghost"
-            onClick={() => router.push("/dashboard")}
-            style={{ width: "100%", marginTop: 18 }}
-          >
-            ← Dashboard
-          </button>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={deleteTarget !== null}
+        username={deleteTarget?.profile.username ?? ""}
+        loading={deleteLoading}
+        onCancel={() => {
+          if (!deleteLoading) setDeleteTarget(null);
+        }}
+        onConfirm={() => void confirmRemoveFriend()}
+      />
+
+      <style jsx>{`
+        .fp-shell {
+          position: relative;
+          z-index: 1;
+          min-height: 100vh;
+          padding: calc(var(--navbar-height) + 20px) 22px 28px;
+        }
+
+        .fp-container {
+          width: min(1240px, 100%);
+          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .fp-hero {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 18px;
+          padding: 18px 20px;
+          border-color: rgba(124, 58, 237, 0.22);
+        }
+
+        .fp-kicker {
+          display: block;
+          font-family: var(--font-heading);
+          font-weight: 700;
+          letter-spacing: 0.18em;
+          font-size: 0.7rem;
+          color: rgba(148, 163, 184, 0.95);
+          text-transform: uppercase;
+          margin-bottom: 6px;
+        }
+
+        .fp-title {
+          margin: 0;
+          font-family: var(--font-heading);
+          font-size: clamp(1.75rem, 2.2vw, 2.25rem);
+          color: #f8fafc;
+          line-height: 1;
+        }
+
+        .fp-desc {
+          margin: 8px 0 0;
+          max-width: 520px;
+          color: rgba(226, 232, 240, 0.72);
+          font-size: 0.92rem;
+          line-height: 1.45;
+        }
+
+        .fp-stats {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(104px, 1fr));
+          gap: 8px;
+          width: min(340px, 100%);
+        }
+
+        .fp-st {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.03);
+          min-height: 64px;
+        }
+
+        .fp-st-ico {
+          font-size: 1.25rem;
+          line-height: 1;
+        }
+
+        .fp-st-body {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+        }
+
+        .fp-st-num {
+          font-family: var(--font-heading);
+          font-size: 1.35rem;
+          line-height: 1;
+          font-weight: 800;
+        }
+
+        .fp-num-white {
+          color: #f8fafc;
+        }
+        .fp-num-green {
+          color: #34d399;
+        }
+        .fp-num-amber {
+          color: #fbbf24;
+        }
+        .fp-num-red {
+          color: #f87171;
+        }
+
+        .fp-st-label {
+          font-size: 0.65rem;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          font-family: var(--font-heading);
+          font-weight: 700;
+          color: rgba(148, 163, 184, 0.95);
+        }
+
+        .fp-alert {
+          padding: 12px 14px;
+          font-family: var(--font-heading);
+          font-weight: 700;
+          font-size: 0.9rem;
+        }
+        .fp-alert.success {
+          border-color: rgba(16, 185, 129, 0.35);
+          color: #10b981;
+        }
+        .fp-alert.danger {
+          border-color: rgba(239, 68, 68, 0.35);
+          color: #ef4444;
+        }
+
+        .fp-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+          gap: 14px;
+          align-items: start;
+        }
+
+        .fp-main {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .fp-side {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .fp-panel {
+          padding: 16px;
+        }
+
+        .fp-head {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .fp-head-row {
+          align-items: flex-start;
+        }
+
+        .fp-head-block {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+        }
+
+        .fp-head-title {
+          font-family: var(--font-heading);
+          font-weight: 800;
+          font-size: 1rem;
+          color: #f8fafc;
+          line-height: 1.2;
+        }
+
+        .fp-head-sub {
+          display: block;
+          margin: 0;
+        }
+
+        .fp-head small {
+          color: rgba(148, 163, 184, 0.95);
+          font-size: 0.74rem;
+          font-family: var(--font-heading);
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .fp-ping {
+          color: #fecaca !important;
+        }
+
+        .fp-search-wrap {
+          position: relative;
+          width: 100%;
+          margin-bottom: 4px;
+        }
+
+        .fp-search-input {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-primary);
+          border-radius: 12px;
+          padding: 12px 48px 12px 14px;
+          font-size: 0.95rem;
+          outline: none;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .fp-search-input:focus {
+          border-color: rgba(124, 58, 237, 0.55);
+          box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+        }
+
+        .fp-search-btn {
+          position: absolute;
+          right: 8px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          background: rgba(124, 58, 237, 0.25);
+          color: #f8fafc;
+          font-size: 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.2s ease;
+        }
+
+        .fp-search-btn:hover:not(:disabled) {
+          background: rgba(124, 58, 237, 0.4);
+        }
+
+        .fp-search-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .fp-list {
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 12px;
+          overflow: hidden;
+          background: rgba(0, 0, 0, 0.12);
+        }
+
+        .fp-friends-list {
+          max-height: min(520px, 55vh);
+          overflow: auto;
+        }
+
+        .fp-toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .fp-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .fp-pill {
+          height: 32px;
+          padding: 0 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.03);
+          color: rgba(226, 232, 240, 0.9);
+          font-family: var(--font-heading);
+          font-weight: 600;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .fp-pill.is-on {
+          border-color: rgba(124, 58, 237, 0.45);
+          background: rgba(124, 58, 237, 0.18);
+          color: #fff;
+        }
+
+        .fp-select {
+          height: 32px;
+          padding: 0 10px;
+          border-radius: 10px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.04);
+          color: #e2e8f0;
+          font-family: var(--font-heading);
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .fp-mini {
+          height: 32px;
+          padding: 0 12px;
+          font-size: 12px;
+        }
+
+        .fp-badge {
+          display: inline-flex;
+          align-items: center;
+          height: 32px;
+          padding: 0 12px;
+          border-radius: 999px;
+          font-family: var(--font-heading);
+          font-weight: 700;
+          font-size: 11px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .fp-badge.disabled {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: rgba(148, 163, 184, 0.95);
+        }
+
+        .fp-badge.violet {
+          background: rgba(124, 58, 237, 0.2);
+          border: 1px solid rgba(167, 139, 250, 0.35);
+          color: #ddd6fe;
+        }
+
+        .fp-inbox-row :global(.spr-row) {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .fp-inbox-row:last-child :global(.spr-row) {
+          border-bottom: none;
+        }
+
+        .fp-inbox-actions {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .fp-wait {
+          border-color: rgba(245, 158, 11, 0.22);
+        }
+
+        .fp-wait-body {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .fp-wait-line {
+          font-size: 0.85rem;
+          color: rgba(148, 163, 184, 0.95);
+          line-height: 1.4;
+        }
+
+        .fp-wait-line b {
+          color: #f8fafc;
+        }
+
+        .fp-back {
+          width: 100%;
+          min-height: 44px;
+        }
+
+        @media (max-width: 1024px) {
+          .fp-grid {
+            grid-template-columns: 1fr;
+          }
+          .fp-side {
+            order: 3;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .fp-shell {
+            padding: calc(var(--navbar-height) + 12px) 12px 88px;
+          }
+          .fp-hero {
+            grid-template-columns: 1fr;
+          }
+          .fp-stats {
+            width: 100%;
+          }
+        }
+      `}</style>
     </>
   );
 }

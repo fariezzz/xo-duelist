@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "../lib/supabase";
 
@@ -9,9 +9,10 @@ type GameInvite = {
   sender_id: string;
   receiver_id: string;
   room_id: string | null;
-  status: "pending" | "accepted" | "declined" | "cancelled";
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
   created_at: string;
   responded_at: string | null;
+  expires_at: string | null;
 };
 
 type Profile = {
@@ -28,23 +29,36 @@ type PopupInvite = GameInvite & {
 function formatInviteError(message: string) {
   const lower = message.toLowerCase();
 
+  if (lower.includes("sender_busy")) {
+    return "You are currently in a match or matchmaking.";
+  }
+  if (lower.includes("receiver_busy")) {
+    return "That player is currently in a match or matchmaking.";
+  }
   if (
     lower.includes("player_is_busy") ||
     lower.includes("one_player_already_in_match") ||
     lower.includes("one_player_already_matchmaking")
   ) {
-    return "Pemain sedang bermain atau sedang matchmaking.";
+    return "A player is currently in a match or matchmaking.";
   }
-
+  if (lower.includes("invite_expired")) {
+    return "This invite has expired.";
+  }
+  if (lower.includes("invite_cancelled")) {
+    return "This invite has been cancelled.";
+  }
+  if (lower.includes("invite_already_resolved")) {
+    return "This invite has already been resolved.";
+  }
   if (lower.includes("invite_not_found")) {
-    return "Invite sudah tidak tersedia.";
+    return "This invite is no longer available.";
   }
-
   if (lower.includes("not_authenticated")) {
-    return "Kamu harus login terlebih dahulu.";
+    return "You need to sign in first.";
   }
 
-  return message || "Gagal memproses invite.";
+  return message || "Failed to process invite.";
 }
 
 export default function GameInvitePopup({
@@ -58,6 +72,40 @@ export default function GameInvitePopup({
   const [loadingAction, setLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startNotice, setStartNotice] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function clearCountdown() {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    setCountdown(null);
+  }
+
+  function startCountdown(expiresAt: string | null) {
+    clearCountdown();
+    if (!expiresAt) return;
+
+    const expiresMs = new Date(expiresAt).getTime();
+    if (!Number.isFinite(expiresMs)) return;
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((expiresMs - Date.now()) / 1000));
+      setCountdown(remaining);
+      if (remaining <= 0) {
+        clearCountdown();
+        // Auto-dismiss expired invite
+        setInvite((current) => {
+          if (current && current.expires_at === expiresAt) return null;
+          return current;
+        });
+      }
+    };
+
+    tick();
+    countdownRef.current = setInterval(tick, 1000);
+  }
 
   async function getSenderProfile(senderId: string) {
     const { data } = await supabaseClient
@@ -72,6 +120,12 @@ export default function GameInvitePopup({
   async function showIncomingInvite(row: GameInvite) {
     if (row.status !== "pending") return;
 
+    // Check if already expired by time
+    if (row.expires_at) {
+      const expiresMs = new Date(row.expires_at).getTime();
+      if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) return;
+    }
+
     const senderProfile = await getSenderProfile(row.sender_id);
 
     setInvite({
@@ -80,6 +134,7 @@ export default function GameInvitePopup({
     });
 
     setError(null);
+    startCountdown(row.expires_at);
   }
 
   async function loadPendingInvite(userId: string) {
@@ -101,6 +156,7 @@ export default function GameInvitePopup({
       await showIncomingInvite(data as GameInvite);
     } else {
       setInvite(null);
+      clearCountdown();
     }
   }
 
@@ -110,17 +166,21 @@ export default function GameInvitePopup({
 
     if (currentPath === `/game/${roomId}`) return;
 
-    setStartNotice("⚔️ Match accepted! Starting game...");
+    setStartNotice("Match accepted! Starting game...");
 
     setTimeout(() => {
       router.push(`/game/${roomId}`);
     }, 700);
+
+    // Auto-clear notice after redirect
+    setTimeout(() => setStartNotice(null), 2500);
   }
 
   useEffect(() => {
     if (!currentUserId) {
       setInvite(null);
       setStartNotice(null);
+      clearCountdown();
       return;
     }
 
@@ -129,7 +189,7 @@ export default function GameInvitePopup({
     const channel = supabaseClient
       .channel(`global-game-invite-${currentUserId}`)
 
-      // Penerima mendapatkan popup saat ada invite masuk
+      // Receiver gets a popup when a new invite arrives
       .on(
         "postgres_changes",
         {
@@ -147,7 +207,7 @@ export default function GameInvitePopup({
         }
       )
 
-      // Penerima: kalau invite berubah status, popup ditutup
+      // Receiver: close popup when invite status changes
       .on(
         "postgres_changes",
         {
@@ -161,7 +221,10 @@ export default function GameInvitePopup({
 
           if (row.status !== "pending") {
             setInvite((current) => {
-              if (current?.id === row.id) return null;
+              if (current?.id === row.id) {
+                clearCountdown();
+                return null;
+              }
               return current;
             });
           }
@@ -169,10 +232,21 @@ export default function GameInvitePopup({
           if (row.status === "accepted" && row.room_id) {
             redirectToRoom(row.room_id);
           }
+
+          // Show notice for cancelled invites
+          if (row.status === "cancelled") {
+            setStartNotice("Invite was cancelled by the sender.");
+            setTimeout(() => setStartNotice(null), 2200);
+          }
+
+          if (row.status === "expired") {
+            setStartNotice("Invite has expired.");
+            setTimeout(() => setStartNotice(null), 2200);
+          }
         }
       )
 
-      // Peng-invite: saat invite diterima, langsung masuk room juga
+      // Sender: auto-enter room when invite is accepted
       .on(
         "postgres_changes",
         {
@@ -189,7 +263,12 @@ export default function GameInvitePopup({
           }
 
           if (row.status === "declined") {
-            setStartNotice("Invite ditolak.");
+            setStartNotice("Invite was declined.");
+            setTimeout(() => setStartNotice(null), 2200);
+          }
+
+          if (row.status === "expired") {
+            setStartNotice("Invite has expired.");
             setTimeout(() => setStartNotice(null), 2200);
           }
         }
@@ -198,6 +277,7 @@ export default function GameInvitePopup({
 
     return () => {
       supabaseClient.removeChannel(channel);
+      clearCountdown();
     };
   }, [currentUserId, router]);
 
@@ -219,6 +299,7 @@ export default function GameInvitePopup({
       if (error) throw error;
 
       setInvite(null);
+      clearCountdown();
 
       if (accept && roomId) {
         redirectToRoom(roomId);
@@ -266,6 +347,9 @@ export default function GameInvitePopup({
   const senderName = invite.senderProfile?.username ?? "A player";
   const senderElo = invite.senderProfile?.elo_rating ?? 1000;
   const avatarUrl = invite.senderProfile?.avatar_url;
+
+  // Countdown ring percentage (30s total)
+  const countdownPct = countdown !== null ? Math.max(0, (countdown / 30) * 100) : 100;
 
   return (
     <>
@@ -342,7 +426,7 @@ export default function GameInvitePopup({
                   fontSize: "1rem",
                 }}
               >
-                ⚔️ Match Invite
+                âš”ï¸ Match Invite
               </div>
 
               <div
@@ -369,6 +453,40 @@ export default function GameInvitePopup({
                 ELO {senderElo}
               </div>
             </div>
+
+            {/* Countdown badge */}
+            {countdown !== null && (
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  background: `conic-gradient(${countdown <= 5 ? "#ef4444" : "#7c3aed"} ${countdownPct}%, rgba(255,255,255,0.06) 0%)`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(13, 21, 38, 0.95)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontFamily: "var(--font-heading)",
+                    fontWeight: 800,
+                    fontSize: "0.82rem",
+                    color: countdown <= 5 ? "#ef4444" : "#e2e8f0",
+                  }}
+                >
+                  {countdown}
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -408,3 +526,4 @@ export default function GameInvitePopup({
     </>
   );
 }
+

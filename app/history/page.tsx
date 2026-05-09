@@ -219,6 +219,7 @@ export default function HistoryPage() {
   const [replayIndex, setReplayIndex] = useState(0);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replaySpeed, setReplaySpeed] = useState<1 | 2>(1);
+  const [showChart, setShowChart] = useState(false);
 
   const ensureProfiles = useCallback(async (historyRows: HistoryRow[], uid: string) => {
     const opponentIds = Array.from(
@@ -494,7 +495,7 @@ export default function HistoryPage() {
   const chart = useMemo(() => {
     if (eloTrend.length === 0) return null;
     const width = 360;
-    const height = 130;
+    const height = 92;
     const pad = 16;
 
     const min = Math.min(...eloTrend.map((p) => p.elo));
@@ -508,11 +509,7 @@ export default function HistoryPage() {
     }).join(' ');
 
     return (
-      <div className="card" style={{ padding: '14px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700 }}>ELO Trend</span>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>From loaded matches</span>
-        </div>
+      <>
         <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
           <line x1={pad} y1={pad} x2={pad} y2={height - pad} stroke="rgba(148,163,184,0.2)" />
           <line x1={pad} y1={height - pad} x2={width - pad} y2={height - pad} stroke="rgba(148,163,184,0.2)" />
@@ -525,11 +522,11 @@ export default function HistoryPage() {
             points={points}
           />
         </svg>
-        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.76rem', marginTop: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.74rem', marginTop: '6px' }}>
           <span>Min: {min}</span>
           <span>Max: {max}</span>
         </div>
-      </div>
+      </>
     );
   }, [eloTrend]);
 
@@ -540,30 +537,53 @@ export default function HistoryPage() {
         <div style={{ maxWidth: '1040px', margin: '0 auto' }}>
           <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '16px' }}>Match History</h1>
 
-          <div className="card" style={{ marginBottom: '14px', padding: '12px 16px', display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-            <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>Winrate 7D</div>
-              <div style={{ color: '#10b981', fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: 700 }}>{analytics.winRate7}%</div>
+          <div className="card" style={{ marginBottom: '14px', padding: '8px', display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+            <div style={{ border: '1px solid rgba(16,185,129,0.3)', background: 'linear-gradient(135deg, rgba(16,185,129,0.14), rgba(16,185,129,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Winrate 7D</div>
+              <div style={{ color: '#10b981', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>{analytics.winRate7}%</div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>Winrate 30D</div>
-              <div style={{ color: '#22d3ee', fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: 700 }}>{analytics.winRate30}%</div>
+            <div style={{ border: '1px solid rgba(34,211,238,0.3)', background: 'linear-gradient(135deg, rgba(34,211,238,0.14), rgba(34,211,238,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Winrate 30D</div>
+              <div style={{ color: '#22d3ee', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>{analytics.winRate30}%</div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>Current Streak</div>
-              <div style={{ color: '#fbbf24', fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: 700 }}>
+            <div style={{ border: '1px solid rgba(251,191,36,0.3)', background: 'linear-gradient(135deg, rgba(251,191,36,0.14), rgba(251,191,36,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Current Streak</div>
+              <div style={{ color: '#fbbf24', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>
                 {analytics.currentStreak.label} {analytics.currentStreak.count}
               </div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>Avg ELO Delta (20)</div>
-              <div style={{ color: analytics.avgDelta20 >= 0 ? '#10b981' : '#ef4444', fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: 700 }}>
+            <div style={{ border: `1px solid ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, background: `linear-gradient(135deg, ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.14)' : 'rgba(239,68,68,0.14)'}, rgba(255,255,255,0.03))`, borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Avg ELO Delta (20)</div>
+              <div style={{ color: analytics.avgDelta20 >= 0 ? '#10b981' : '#ef4444', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>
                 {analytics.avgDelta20 > 0 ? '+' : ''}{analytics.avgDelta20}
               </div>
             </div>
           </div>
 
-          {chart}
+          <div className="card" style={{ padding: '10px 12px', marginBottom: '14px' }}>
+            <button
+              className="btn btn-ghost"
+              style={{ width: '100%', justifyContent: 'space-between', padding: '8px 10px', fontSize: '0.85rem' }}
+              onClick={() => setShowChart((prev) => !prev)}
+            >
+              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
+                ELO Trend {showChart ? '\u25B2' : '\u25BC'}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
+                {showChart ? 'Hide' : 'Show'}
+              </span>
+            </button>
+
+            {showChart && (
+              <div style={{ marginTop: '10px', padding: '0 2px 2px' }}>
+                {chart ?? (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                    No chart data is available from the loaded matches.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="card" style={{ marginBottom: '14px', padding: '12px', display: 'grid', gap: '10px' }}>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -665,7 +685,12 @@ export default function HistoryPage() {
                   <th>Mode</th>
                   <th>ELO</th>
                   <th>Date</th>
-                  <th style={{ paddingRight: '20px' }}>Replay</th>
+                  <th style={{ paddingRight: '20px' }}>
+                    <div style={{ display: 'grid', gap: '2px' }}>
+                      <span>Replay</span>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.68rem', letterSpacing: '0.02em', textTransform: 'none' }}>Watch Replay</span>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -743,9 +768,11 @@ export default function HistoryPage() {
                         <button
                           className="btn btn-ghost"
                           style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                          title="Watch replay of this match"
+                          aria-label="Watch replay of this match"
                           onClick={() => openReplay(r)}
                         >
-                          Replay
+                          Watch Replay
                         </button>
                       </td>
                     </tr>

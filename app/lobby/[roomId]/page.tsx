@@ -52,7 +52,7 @@ function toLobbyErrorMessage(err: unknown, fallback: string): string {
   const raw = String((err as any)?.message || fallback);
   const msg = raw.toLowerCase();
 
-  if (msg.includes('room_finished')) return 'Match sebelumnya sudah selesai. Klik Back to Lobby dari hasil game untuk reset room.';
+  if (msg.includes('room_finished')) return 'Previous match is already finished. Click Back to Lobby from the result screen to reset the room.';
   if (msg.includes('room_not_found_or_full')) return 'Room not found or already full.';
   if (msg.includes('room_not_found')) return 'Room not found.';
   if (msg.includes('players_not_ready')) return 'All players must be READY first.';
