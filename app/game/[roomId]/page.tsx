@@ -72,6 +72,7 @@ export default function GameRoom() {
   const [playMatchFound] = useSound('/sounds/match-found.mp3', { volume: 0.7 });
   const lastStatusRef = useRef<string | null>(null);
   const timerWarningShown = useRef(false);
+  const lastShuffleAtRef = useRef<number>(12);
 
   /* Result state */
   const [resultData, setResultData] = useState<{
@@ -103,16 +104,57 @@ export default function GameRoom() {
   const [aiThinking, setAiThinking] = useState(false);
 
   /* Sounds */
-  const [playPlaceX] = useSound('/sounds/place-x.wav', { volume: 0.6 });
-  const [playPlaceO] = useSound('/sounds/place-o.wav', { volume: 0.6 });
-  const [playWin] = useSound('/sounds/win.wav', { volume: 0.8 });
-  const [playLose] = useSound('/sounds/lose.wav', { volume: 0.8 });
+  const [playPlaceX] = useSound('/sounds/place-x.mp3', { volume: 0.6 });
+  const [playPlaceO] = useSound('/sounds/place-o.mp3', { volume: 0.6 });
+  const [playWin] = useSound('/sounds/win.mp3', { volume: 0.8 });
+  const [playLose] = useSound('/sounds/lose.mp3', { volume: 0.8 });
+  const [playDraw] = useSound('/sounds/draw.mp3', { volume: 0.6 });
+
+  const [playSkillBarrier] = useSound('/sounds/skill-barrier.mp3', { volume: 0.7 });
+  const [playSkillOverwrite] = useSound('/sounds/skill-overwrite.mp3', { volume: 0.7 });
+  const [playSkillBomb] = useSound('/sounds/skill-bomb.mp3', { volume: 0.75 });
+
+  const [playCurseBlind] = useSound('/sounds/curse-blind.mp3', { volume: 0.65 });
+  const [playCurseSlow] = useSound('/sounds/curse-slow.mp3', { volume: 0.65 });
+  const [playCurseFumble] = useSound('/sounds/curse-fumble.mp3', { volume: 0.65 });
+
+  const [playPowerCell] = useSound('/sounds/power-cell.mp3', { volume: 0.65 });
+  const [playShuffle] = useSound('/sounds/shuffle.mp3', { volume: 0.7 });
+  const [playFumble] = useSound('/sounds/fumble.mp3', { volume: 0.65 });
 
   // Stable refs for sounds to use in callbacks
-  const soundsRef = useRef({ playPlaceX, playPlaceO, playWin, playLose });
+  const soundsRef = useRef({
+    playPlaceX, playPlaceO, playWin, playLose, playDraw,
+    playSkillBarrier, playSkillOverwrite, playSkillBomb,
+    playCurseBlind, playCurseSlow, playCurseFumble,
+    playPowerCell, playShuffle, playFumble
+  });
+
   useEffect(() => {
-    soundsRef.current = { playPlaceX, playPlaceO, playWin, playLose };
-  }, [playPlaceX, playPlaceO, playWin, playLose]);
+    soundsRef.current = {
+      playPlaceX, playPlaceO, playWin, playLose, playDraw,
+      playSkillBarrier, playSkillOverwrite, playSkillBomb,
+      playCurseBlind, playCurseSlow, playCurseFumble,
+      playPowerCell, playShuffle, playFumble
+    };
+  }, [
+    playPlaceX, playPlaceO, playWin, playLose, playDraw,
+    playSkillBarrier, playSkillOverwrite, playSkillBomb,
+    playCurseBlind, playCurseSlow, playCurseFumble,
+    playPowerCell, playShuffle, playFumble
+  ]);
+
+  const playSkillSound = useCallback((skill: string) => {
+    if (skill === 'BARRIER') soundsRef.current.playSkillBarrier();
+    else if (skill === 'OVERWRITE') soundsRef.current.playSkillOverwrite();
+    else if (skill === 'BOMB') soundsRef.current.playSkillBomb();
+  }, []);
+
+  const playCurseSound = useCallback((curse: string) => {
+    if (curse === 'BLIND') soundsRef.current.playCurseBlind();
+    else if (curse === 'SLOW') soundsRef.current.playCurseSlow();
+    else if (curse === 'FUMBLE') soundsRef.current.playCurseFumble();
+  }, []);
 
   /* ── Init ──────────────────────────────────────── */
   useEffect(() => {
@@ -130,6 +172,7 @@ export default function GameRoom() {
       const bs = typeof data.board_state === 'string' ? JSON.parse(data.board_state) : data.board_state;
       setBoard(bs);
       setMySymbol(data.player1_id === uid ? 'X' : 'O');
+      lastShuffleAtRef.current = data.next_shuffle_at ?? 12;
 
       // Fetch player profiles for display
       const { data: p1Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player1_id).single();
@@ -173,6 +216,15 @@ export default function GameRoom() {
           const bs = typeof newRow.board_state === 'string' ? JSON.parse(newRow.board_state) : newRow.board_state;
           setBoard(bs);
         }
+        
+        if (newRow.next_shuffle_at > lastShuffleAtRef.current) {
+          lastShuffleAtRef.current = newRow.next_shuffle_at;
+          setIsShuffling(true);
+          soundsRef.current.playShuffle();
+          setTimeout(() => setIsShuffling(false), 1200);
+          showToastRef.current({ type: 'info', title: '🌀 Board Shuffled!', message: 'All positions have been randomized!' });
+        }
+
         setTurnTimerKey((k) => k + 1);
         timerWarningShown.current = false;
         if (newRow.status !== 'ongoing' || newRow.current_turn !== meId) {
@@ -433,6 +485,7 @@ export default function GameRoom() {
 
     if (outcome === 'win') soundsRef.current.playWin();
     else if (outcome === 'lose') soundsRef.current.playLose();
+    else if (outcome === 'draw') soundsRef.current.playDraw();
 
     // Finalize (host only)
     if (meId && newRow.player1_id === meId) {
@@ -540,49 +593,51 @@ export default function GameRoom() {
       const symbol = amP1 ? 'X' : 'O';
       const update: any = { [mySkillKey]: null, last_move_at: new Date().toISOString() };
 
-    if (activeSkillUse === 'BARRIER') {
-      newBoard[i] = 'BARRIER';
-      update.board_state = newBoard;
-    } else if (activeSkillUse === 'OVERWRITE') {
-      newBoard[i] = symbol;
-      update.board_state = newBoard;
-    } else if (activeSkillUse === 'BOMB') {
-      newBoard[i] = null;
-      update.board_state = newBoard;
-    }
-
-    // Using skill consumes your turn
-    const newTurn = turnCount + 1;
-    update.turn_count = newTurn;
-    update.current_turn = amP1 ? room.player2_id : room.player1_id;
-    if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
-
-    // Check win after OVERWRITE
-    if (activeSkillUse === 'OVERWRITE') {
-      const res = checkWinner4(newBoard as any);
-      if (res.symbol) {
-        update.status = 'finished';
-        update.winner_id = meId;
-        update.finish_reason = 'skill_overwrite_win';
-        update.ended_at = update.last_move_at;
+      if (activeSkillUse === 'BARRIER') {
+        newBoard[i] = 'BARRIER';
+        update.board_state = newBoard;
+      } else if (activeSkillUse === 'OVERWRITE') {
+        newBoard[i] = symbol;
+        update.board_state = newBoard;
+      } else if (activeSkillUse === 'BOMB') {
+        newBoard[i] = null;
+        update.board_state = newBoard;
       }
-    }
 
-    // Shuffle check
-    if (newTurn >= effectiveNextShuffleAt && !update.status) {
-      const s = safeShuffle(newBoard, powerCells, curseCells);
-      update.board_state = s.board;
-      update.power_cells = JSON.stringify(s.power_cells);
-      update.curse_cells = JSON.stringify(s.curse_cells);
-      update.next_shuffle_at = effectiveNextShuffleAt + 12;
-      setIsShuffling(true);
-      setTimeout(() => setIsShuffling(false), 1200);
-    }
+      // Using skill consumes your turn
+      const newTurn = turnCount + 1;
+      update.turn_count = newTurn;
+      update.current_turn = amP1 ? room.player2_id : room.player1_id;
+      if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
 
-    setBoard(update.board_state || newBoard);
-    setSkillTargetMode(false); setActiveSkillUse(null); setSkillTargetCells([]);
-    showToast({ type: 'success', title: `${SKILL_META[activeSkillUse].icon} ${SKILL_META[activeSkillUse].name} Used!`, message: SKILL_META[activeSkillUse].desc });
-    await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
+      // Check win after OVERWRITE
+      if (activeSkillUse === 'OVERWRITE') {
+        const res = checkWinner4(newBoard as any);
+        if (res.symbol) {
+          update.status = 'finished';
+          update.winner_id = meId;
+          update.finish_reason = 'skill_overwrite_win';
+          update.ended_at = update.last_move_at;
+        }
+      }
+
+      // Shuffle check
+      if (newTurn >= effectiveNextShuffleAt && !update.status) {
+        const s = safeShuffle(newBoard, powerCells, curseCells);
+        update.board_state = s.board;
+        update.power_cells = JSON.stringify(s.power_cells);
+        update.curse_cells = JSON.stringify(s.curse_cells);
+        update.next_shuffle_at = effectiveNextShuffleAt + 12;
+        lastShuffleAtRef.current = update.next_shuffle_at;
+        setIsShuffling(true);
+        setTimeout(() => setIsShuffling(false), 1200);
+      }
+
+      setBoard(update.board_state || newBoard);
+      setSkillTargetMode(false); setActiveSkillUse(null); setSkillTargetCells([]);
+      playSkillSound(activeSkillUse);
+      showToast({ type: 'success', title: `${SKILL_META[activeSkillUse].icon} ${SKILL_META[activeSkillUse].name} Used!`, message: SKILL_META[activeSkillUse].desc });
+      await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
     } catch {
       turnSubmitLockRef.current = false;
       setIsSubmittingTurn(false);
@@ -598,102 +653,111 @@ export default function GameRoom() {
     turnSubmitLockRef.current = true;
     setIsSubmittingTurn(true);
     try {
-    const symbol: 'X' | 'O' = amP1 ? 'X' : 'O';
-    let targetCell = i;
+      const symbol: 'X' | 'O' = amP1 ? 'X' : 'O';
+      let targetCell = i;
 
-    // FUMBLE: randomize target (unless 1 step from winning)
-    if (myCurse?.type === 'FUMBLE' && myCurse.turns_remaining > 0) {
-      if (!isOneStepFromWin(board, symbol)) {
-        const rnd = getRandomEmptyCell(board);
-        if (rnd !== null && rnd !== i) { targetCell = rnd; setFumbleWarning(true); setTimeout(() => setFumbleWarning(false), 1500); }
+      // FUMBLE: randomize target (unless 1 step from winning)
+      if (myCurse?.type === 'FUMBLE' && myCurse.turns_remaining > 0) {
+        if (!isOneStepFromWin(board, symbol)) {
+          const rnd = getRandomEmptyCell(board);
+          if (rnd !== null && rnd !== i) {
+            targetCell = rnd;
+            setFumbleWarning(true);
+            soundsRef.current.playFumble();
+            setTimeout(() => setFumbleWarning(false), 1500);
+          }
+        }
       }
-    }
 
-    const newBoard = [...board] as BoardCell[];
-    newBoard[targetCell] = symbol;
-    setBoard(newBoard);
-    if (symbol === 'X') playPlaceX(); else playPlaceO();
+      const newBoard = [...board] as BoardCell[];
+      newBoard[targetCell] = symbol;
+      setBoard(newBoard);
+      if (symbol === 'X') playPlaceX(); else playPlaceO();
 
-    // Build DB update
-    const update: any = { board_state: newBoard, last_move_at: new Date().toISOString() };
-    const newTurnCount = turnCount + 1;
-    update.turn_count = newTurnCount;
-    if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
+      // Build DB update
+      const update: any = { board_state: newBoard, last_move_at: new Date().toISOString() };
+      const newTurnCount = turnCount + 1;
+      update.turn_count = newTurnCount;
+      if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
 
-    // Power Cell check
-    const newPowerCells = [...powerCells];
-    const pc = newPowerCells.find(p => p.index === targetCell && !p.claimed);
-    if (pc) {
-      pc.claimed = true;
-      update.power_cells = JSON.stringify(newPowerCells);
-      if (!mySkill) {
-        const skill = getRandomSkill();
-        update[mySkillKey] = skill;
-        setNewSkillFlag(true); setTimeout(() => setNewSkillFlag(false), 2000);
-        showToast({ type: 'success', title: '✦ Power Cell Claimed!', message: `You got: ${SKILL_META[skill].icon} ${SKILL_META[skill].name}` });
-      } else {
-        showToast({ type: 'warning', title: 'Power Cell', message: 'You already have a skill!' });
+      // Power Cell check
+      const newPowerCells = [...powerCells];
+      const pc = newPowerCells.find(p => p.index === targetCell && !p.claimed);
+      if (pc) {
+        pc.claimed = true;
+        update.power_cells = JSON.stringify(newPowerCells);
+        if (!mySkill) {
+          const skill = getRandomSkill();
+          update[mySkillKey] = skill;
+          setNewSkillFlag(true); setTimeout(() => setNewSkillFlag(false), 2000);
+          soundsRef.current.playPowerCell();
+          showToast({ type: 'success', title: '✦ Power Cell Claimed!', message: `You got: ${SKILL_META[skill].icon} ${SKILL_META[skill].name}` });
+        } else {
+          showToast({ type: 'warning', title: 'Power Cell', message: 'You already have a skill!' });
+        }
       }
-    }
 
-    // Curse Cell check
-    const newCurseCells = [...curseCells];
-    const cc = newCurseCells.find(c => c.index === targetCell && !c.triggered);
-    if (cc && !myCurse) {
-      cc.triggered = true;
-      update.curse_cells = JSON.stringify(newCurseCells);
-      let curseType = getRandomCurse();
-      // FUMBLE protection: don't activate if 1 step from winning
-      if (curseType === 'FUMBLE' && isOneStepFromWin(newBoard, symbol)) {
-        curseType = 'SLOW'; // fallback to SLOW
+      // Curse Cell check
+      const newCurseCells = [...curseCells];
+      const cc = newCurseCells.find(c => c.index === targetCell && !c.triggered);
+      if (cc && !myCurse) {
+        cc.triggered = true;
+        update.curse_cells = JSON.stringify(newCurseCells);
+        let curseType = getRandomCurse();
+        // FUMBLE protection: don't activate if 1 step from winning
+        if (curseType === 'FUMBLE' && isOneStepFromWin(newBoard, symbol)) {
+          curseType = 'SLOW'; // fallback to SLOW
+        }
+        const curse = buildCurse(curseType);
+        update[myCurseKey] = JSON.stringify(curse);
+        playCurseSound(curseType);
+        showBanner({ type: 'error', message: `💀 CURSED! ${CURSE_META[curseType].name}: ${CURSE_META[curseType].desc}`, icon: '💀', duration: 3500 });
       }
-      const curse = buildCurse(curseType);
-      update[myCurseKey] = JSON.stringify(curse);
-      showBanner({ type: 'error', message: `💀 CURSED! ${CURSE_META[curseType].name}: ${CURSE_META[curseType].desc}`, icon: '💀', duration: 3500 });
-    }
 
-    // Tick down my curse (if not just applied)
-    if (myCurse && !cc) {
-      const ticked = tickCurse(myCurse);
-      update[myCurseKey] = ticked ? JSON.stringify(ticked) : null;
-    }
+      // Tick down my curse (if not just applied)
+      if (myCurse && !cc) {
+        const ticked = tickCurse(myCurse);
+        update[myCurseKey] = ticked ? JSON.stringify(ticked) : null;
+      }
 
-    // Check win/draw
-    const res = checkWinner4(newBoard as any);
-    if (res.symbol) {
-      update.status = 'finished';
-      update.winner_id = meId;
-      update.finish_reason = 'line_win';
-      update.ended_at = update.last_move_at;
+      // Check win/draw
+      const res = checkWinner4(newBoard as any);
+      if (res.symbol) {
+        update.status = 'finished';
+        update.winner_id = meId;
+        update.finish_reason = 'line_win';
+        update.ended_at = update.last_move_at;
+        await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
+        return;
+      }
+      if (isDraw(newBoard as any)) {
+        update.status = 'finished';
+        update.winner_id = null;
+        update.finish_reason = 'draw_board_full';
+        update.ended_at = update.last_move_at;
+        await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
+        return;
+      }
+
+      // Determine next turn
+      const oppId = amP1 ? room.player2_id : room.player1_id;
+      update.current_turn = oppId;
+
+      // Shuffle check
+      if (newTurnCount >= effectiveNextShuffleAt) {
+        const s = safeShuffle(newBoard, update.power_cells ? JSON.parse(update.power_cells) : newPowerCells, update.curse_cells ? JSON.parse(update.curse_cells) : newCurseCells);
+        update.board_state = s.board;
+        update.power_cells = JSON.stringify(s.power_cells);
+        update.curse_cells = JSON.stringify(s.curse_cells);
+        update.next_shuffle_at = effectiveNextShuffleAt + 12;
+        lastShuffleAtRef.current = update.next_shuffle_at;
+        setIsShuffling(true);
+        soundsRef.current.playShuffle();
+        setTimeout(() => setIsShuffling(false), 1200);
+        showToast({ type: 'info', title: '🌀 Board Shuffled!', message: 'All positions have been randomized!' });
+      }
+
       await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
-      return;
-    }
-    if (isDraw(newBoard as any)) {
-      update.status = 'finished';
-      update.winner_id = null;
-      update.finish_reason = 'draw_board_full';
-      update.ended_at = update.last_move_at;
-      await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
-      return;
-    }
-
-    // Determine next turn
-    const oppId = amP1 ? room.player2_id : room.player1_id;
-    update.current_turn = oppId;
-
-    // Shuffle check
-    if (newTurnCount >= effectiveNextShuffleAt) {
-      const s = safeShuffle(newBoard, update.power_cells ? JSON.parse(update.power_cells) : newPowerCells, update.curse_cells ? JSON.parse(update.curse_cells) : newCurseCells);
-      update.board_state = s.board;
-      update.power_cells = JSON.stringify(s.power_cells);
-      update.curse_cells = JSON.stringify(s.curse_cells);
-      update.next_shuffle_at = effectiveNextShuffleAt + 12;
-      setIsShuffling(true);
-      setTimeout(() => setIsShuffling(false), 1200);
-      showToast({ type: 'info', title: '🌀 Board Shuffled!', message: 'All positions have been randomized!' });
-    }
-
-    await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
     } catch {
       turnSubmitLockRef.current = false;
       setIsSubmittingTurn(false);
@@ -853,11 +917,11 @@ export default function GameRoom() {
   const isLobbyGame = isLobbyGameSession || Boolean(room.player1_ready && room.player2_ready);
 
   const myPlayerName =
-  mySymbol === 'X'
-    ? playerProfiles?.p1.username
-    : mySymbol === 'O'
-      ? playerProfiles?.p2.username
-      : 'Player';
+    mySymbol === 'X'
+      ? playerProfiles?.p1.username
+      : mySymbol === 'O'
+        ? playerProfiles?.p2.username
+        : 'Player';
 
   return (
     <>
@@ -998,7 +1062,7 @@ export default function GameRoom() {
               )}
 
               <div className="game-bottom-actions" style={{ textAlign: 'center' }}>
-                {room.status === 'ongoing' ? 
+                {room.status === 'ongoing' ?
                   <button
                     className="btn btn-danger"
                     disabled={lock.status !== 'active'}
@@ -1129,13 +1193,13 @@ export default function GameRoom() {
         newElo={resultData?.newElo}
         opponentName={resultData?.opponentName}
         isVsAi={!!room?.is_vs_ai}
-        aiEloMode={room?.is_vs_ai ? (room?.ai_elo_mode ?? (aiOrigin === 'dashboard' ? 'none' : 'reduced')) : undefined}
+        aiEloMode={room?.is_vs_ai ? (room?.ai_elo_mode as "none" | "reduced" ?? (aiOrigin === 'dashboard' ? 'none' : 'reduced')) : undefined}
         onPlayAgain={
           isLobbyGame
             ? undefined
             : (
-                // AI from matchmaking fallback: no Play Again, just dashboard
-                (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
+              // AI from matchmaking fallback: no Play Again, just dashboard
+              (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
                 : async () => {
                   if (room?.is_vs_ai && aiOrigin === 'dashboard') {
                     try {
@@ -1146,7 +1210,7 @@ export default function GameRoom() {
                       if (error) throw error;
                       const row = Array.isArray(data) ? data[0] : data;
                       if (!row?.room_id) throw new Error('No room created');
-                      
+
                       const session = await supabaseClient.auth.getSession();
                       const uid = session.data.session?.user.id;
                       const { data: myProfile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', uid!).single();
@@ -1165,7 +1229,7 @@ export default function GameRoom() {
                     router.push('/matchmaking');
                   }
                 }
-              )
+            )
         }
         onDashboard={async () => {
           if (isLobbyGame) {

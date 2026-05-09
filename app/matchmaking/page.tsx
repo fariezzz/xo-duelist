@@ -21,7 +21,7 @@ export default function MatchmakingPage() {
   const redirectedRef = useRef(false);
   const aiFallbackTriggeredRef = useRef(false);
 
-  const [playMatchFound] = useSound('/sounds/match-found.wav', { volume: 0.7 });
+  const [playMatchFound] = useSound('/sounds/match-found.mp3', { volume: 0.7 });
 
   // Match found modal state
   const [matchFound, setMatchFound] = useState<{

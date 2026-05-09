@@ -1,11 +1,29 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+
+const ROUTE_BGM_MAP: Record<string, { src: string, volume: number }> = {
+  home: { src: '/sounds/bgm-home.mp3', volume: 0.30 },
+  game: { src: '/sounds/bgm-game.mp3', volume: 0.12 }, // Lowered to make in-game SFX pop
+  matchmaking: { src: '/sounds/bgm-matchmaking.mp3', volume: 0.32 },
+  lobby: { src: '/sounds/bgm-lobby.mp3', volume: 0.28 },
+};
+
+function getTrackConfig(pathname: string) {
+  if (!pathname) return ROUTE_BGM_MAP.home;
+  if (pathname.startsWith('/game/') || pathname === '/training') return ROUTE_BGM_MAP.game;
+  if (pathname.startsWith('/lobby')) return ROUTE_BGM_MAP.lobby;
+  if (pathname === '/matchmaking') return ROUTE_BGM_MAP.matchmaking;
+  // default
+  return ROUTE_BGM_MAP.home;
+}
 
 export default function BackgroundMusic() {
+  const pathname = usePathname();
   const audioRef = useRef<HTMLAudioElement>(null);
-  // Default to muted to respect user experience and browser policies
   const [isMuted, setIsMuted] = useState(true);
   const [hasInteracted, setHasInteracted] = useState(false);
+  const [currentTrack, setCurrentTrack] = useState(() => getTrackConfig(pathname || '/'));
 
   // Initialize from localStorage
   useEffect(() => {
@@ -13,21 +31,46 @@ export default function BackgroundMusic() {
     if (saved === 'false') {
       setIsMuted(false);
     }
-    
-    // Set default volume slightly lower so it doesn't drown out SFX
-    if (audioRef.current) {
-      audioRef.current.volume = 0.35;
-    }
   }, []);
 
-  // Save to localStorage and update audio state
+  // Update track config when pathname changes
+  useEffect(() => {
+    const nextTrack = getTrackConfig(pathname || '/');
+    if (nextTrack.src !== currentTrack.src) {
+      setCurrentTrack(nextTrack);
+    }
+  }, [pathname, currentTrack.src]);
+
+  // Handle track changes and fading
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (audio.src && !audio.src.endsWith(currentTrack.src)) {
+      // Safe src change without complex fade for now to ensure stability
+      audio.src = currentTrack.src;
+      audio.volume = currentTrack.volume;
+      if (!isMuted && hasInteracted) {
+        audio.play().catch(e => console.warn("Audio play blocked:", e));
+      }
+    } else if (!audio.src) {
+      audio.src = currentTrack.src;
+      audio.volume = currentTrack.volume;
+    } else {
+      // Just update volume if same track
+      audio.volume = currentTrack.volume;
+    }
+  }, [currentTrack, isMuted, hasInteracted]);
+
+  // Handle play/pause based on mute state
   useEffect(() => {
     localStorage.setItem('bgm_muted', isMuted.toString());
-    if (audioRef.current) {
+    const audio = audioRef.current;
+    if (audio) {
       if (isMuted) {
-        audioRef.current.pause();
+        audio.pause();
       } else if (hasInteracted) {
-        audioRef.current.play().catch(e => console.warn("Audio play blocked:", e));
+        audio.play().catch(e => console.warn("Audio play blocked:", e));
       }
     }
   }, [isMuted, hasInteracted]);
@@ -58,7 +101,6 @@ export default function BackgroundMusic() {
       {/* Native HTML5 Audio Element */}
       <audio
         ref={audioRef}
-        src="/sounds/bgm.mp3"
         loop
         preload="auto"
       />
