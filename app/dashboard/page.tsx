@@ -825,7 +825,7 @@ export default function DashboardPage() {
                       >
                         {match.result}
                       </span>
-                      <span className="dash-recent-text">vs <span className="dash-recent-link" onClick={() => router.push(`/profile/${encodeURIComponent(match.opponentUsername)}`)} title={`View ${match.opponentUsername}'s profile`}>{match.opponentName}</span></span>
+                      <span className="dash-recent-text">vs <span className="dash-recent-link" onClick={() => router.push(`/profile/${encodeURIComponent(match.opponentUsername ?? match.opponentName)}`)} title={`View ${match.opponentUsername ?? match.opponentName}'s profile`}>{match.opponentName}</span></span>
                       <span
                         className={`dash-recent-elo ${
                           match.result === "W" ? "is-win" : match.result === "L" ? "is-loss" : "is-draw"
