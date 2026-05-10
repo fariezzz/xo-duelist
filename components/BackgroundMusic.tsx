@@ -21,15 +21,15 @@ function getTrackConfig(pathname: string) {
 export default function BackgroundMusic() {
   const pathname = usePathname();
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [currentTrack, setCurrentTrack] = useState(() => getTrackConfig(pathname || '/'));
 
-  // Initialize from localStorage
+  // Initialize from localStorage (default to playing unless user explicitly muted before)
   useEffect(() => {
     const saved = localStorage.getItem('bgm_muted');
-    if (saved === 'false') {
-      setIsMuted(false);
+    if (saved === 'true') {
+      setIsMuted(true);
     }
   }, []);
 
@@ -101,6 +101,7 @@ export default function BackgroundMusic() {
       {/* Native HTML5 Audio Element */}
       <audio
         ref={audioRef}
+        autoPlay={!isMuted}
         loop
         preload="auto"
       />

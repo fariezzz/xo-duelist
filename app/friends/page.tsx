@@ -1065,7 +1065,7 @@ export default function FriendsPage() {
               />
 
               <button type="button" className="btn btn-ghost fp-back" onClick={() => router.push("/dashboard")}>
-                ← Dashboard
+                ← Home
               </button>
             </aside>
           </div>

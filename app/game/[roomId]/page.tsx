@@ -28,6 +28,7 @@ import { computeAIMove, getRandomPersona, decideAISkill } from '../../../lib/aiP
 import { useStatusManager } from '../../../hooks/useStatusManager';
 
 import LiveChat from '../../../components/LiveChat';
+import VoiceChat from '../../../components/VoiceChat';
 
 /* Tier helper — matches TierBadge logic */
 function getTierName(elo: number) {
@@ -557,6 +558,7 @@ export default function GameRoom() {
 
   /* ── Helper: am I player1? ────────────────────── */
   const amP1 = room?.player1_id === meId;
+  const opponentId = amP1 ? room?.player2_id : room?.player1_id;
   const mySkillKey = amP1 ? 'player1_skill' : 'player2_skill';
   const myCurseKey = amP1 ? 'player1_curse' : 'player2_curse';
   const oppCurseKey = amP1 ? 'player2_curse' : 'player1_curse';
@@ -1282,7 +1284,21 @@ export default function GameRoom() {
         }}
         dashboardLabel={isLobbyGame ? 'Back to Lobby' : undefined}
       />
-      {!room?.is_vs_ai && <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />}
+      
+      {!room?.is_vs_ai && (
+        <div style={{ position: 'fixed', bottom: '20px', left: '20px', zIndex: 50, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <VoiceChat
+            roomId={roomId}
+            meId={meId!}
+            player1Id={room?.player1_id}
+            player2Id={room?.player2_id}
+            opponentId={opponentId}
+            disabled={!!room?.is_vs_ai}
+            compact
+          />
+          <LiveChat roomId={roomId} meId={meId} playerName={myPlayerName} />
+        </div>
+      )}
 
       {/* AI Match Found Modal for Play Again */}
       <MatchFoundModal

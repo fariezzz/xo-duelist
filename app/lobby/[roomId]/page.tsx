@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
 import { useLobbyPresence, type LobbyPresenceEvent } from '../../../hooks/useLobbyPresence';
+import VoiceChat from '../../../components/VoiceChat';
 
 
 
@@ -505,6 +506,7 @@ export default function LobbyRoomPage() {
 
   if (!room) return null;
 
+  const opponentId = isHost ? room.player2_id : room.player1_id;
   const hostReady = !!room.player1_ready;
   const guestReady = !!room.player2_ready;
   const myReady = isHost ? hostReady : guestReady;
@@ -638,6 +640,20 @@ export default function LobbyRoomPage() {
 
             {/* RIGHT — Actions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+              {/* Voice Chat */}
+              {opponentId && (
+                <div style={{ marginBottom: '12px' }}>
+                  <VoiceChat
+                    roomId={roomId}
+                    meId={meId!}
+                    player1Id={room.player1_id}
+                    player2Id={room.player2_id}
+                    opponentId={opponentId}
+                    compact
+                  />
+                </div>
+              )}
 
               {/* Ready toggle — big prominent button */}
               <button
