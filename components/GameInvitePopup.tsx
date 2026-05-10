@@ -160,21 +160,20 @@ export default function GameInvitePopup({
     }
   }
 
-  function redirectToRoom(roomId: string) {
-    const currentPath =
-      typeof window !== "undefined" ? window.location.pathname : "";
+function redirectToLobby(roomId: string) {
+  const currentPath =
+    typeof window !== "undefined" ? window.location.pathname : "";
 
-    if (currentPath === `/game/${roomId}`) return;
+  if (currentPath === `/lobby/${roomId}`) return;
 
-    setStartNotice("Match accepted! Starting game...");
+  setStartNotice("Invite accepted! Opening lobby...");
 
-    setTimeout(() => {
-      router.push(`/game/${roomId}`);
-    }, 700);
+  setTimeout(() => {
+    router.push(`/lobby/${roomId}`);
+  }, 700);
 
-    // Auto-clear notice after redirect
-    setTimeout(() => setStartNotice(null), 2500);
-  }
+  setTimeout(() => setStartNotice(null), 2500);
+}
 
   useEffect(() => {
     if (!currentUserId) {
@@ -230,7 +229,7 @@ export default function GameInvitePopup({
           }
 
           if (row.status === "accepted" && row.room_id) {
-            redirectToRoom(row.room_id);
+            redirectToLobby(row.room_id);
           }
 
           // Show notice for cancelled invites
@@ -259,7 +258,7 @@ export default function GameInvitePopup({
           const row = payload.new as GameInvite;
 
           if (row.status === "accepted" && row.room_id) {
-            redirectToRoom(row.room_id);
+           redirectToLobby(row.room_id);
           }
 
           if (row.status === "declined") {
@@ -302,7 +301,7 @@ export default function GameInvitePopup({
       clearCountdown();
 
       if (accept && roomId) {
-        redirectToRoom(roomId);
+        redirectToLobby(roomId);
       }
     } catch (err: any) {
       console.error("Failed to respond invite:", err);
@@ -426,7 +425,7 @@ export default function GameInvitePopup({
                   fontSize: "1rem",
                 }}
               >
-                âš”ï¸ Match Invite
+                 {"\u2694\uFE0F Match Invite"}
               </div>
 
               <div

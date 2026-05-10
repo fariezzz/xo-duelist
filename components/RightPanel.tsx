@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { UserStatus } from "../lib/statusUtils";
 import { STATUS_LABEL } from "../lib/statusUtils";
 import StatusDot from "./ui/StatusDot";
@@ -37,6 +37,29 @@ function initialsFromName(name: string): string {
     .toUpperCase();
   return initials || "?";
 }
+function formatLastSeen(value?: string | null): string {
+  if (!value) return "Last seen recently";
+
+  const ts = new Date(value).getTime();
+
+  if (!Number.isFinite(ts)) return "Last seen recently";
+
+  const diffMs = Date.now() - ts;
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(diffMs / 86400000);
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+
+  if (seconds < 60) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  if (days < 7) return `${days}d ago`;
+  if (weeks < 4) return `${weeks}w ago`;
+
+  return `${months <= 0 ? 1 : months} ${months <= 1 ? "month" : "months"} ago`;
+}
 
 export default function RightPanel({
   inviteCount,
@@ -51,15 +74,15 @@ export default function RightPanel({
   cancellingInviteId,
 }: RightPanelProps) {
   const onlineCount = friends.filter((friend) => friend.status !== "offline").length;
+  const [, setTimeTick] = useState(0);
 
-  const relativeMinutes = (value?: string | null) => {
-    if (!value) return "Last seen recently";
-    const ts = new Date(value).getTime();
-    if (!Number.isFinite(ts)) return "Last seen recently";
-    const minutes = Math.max(1, Math.floor((Date.now() - ts) / 60000));
-    return `${minutes} min ago`;
-  };
+useEffect(() => {
+  const timer = setInterval(() => {
+    setTimeTick((value) => value + 1);
+  }, 60000);
 
+  return () => clearInterval(timer);
+}, []);
   return (
     <aside className="rp-root">
       <section className="rp-card">
@@ -125,9 +148,9 @@ export default function RightPanel({
                     <div className="rp-friend-status">
                       <StatusDot status={friend.status} size={8} />
                       <span>
-                        {friend.status === "offline"
-                          ? relativeMinutes(friend.lastSeen)
-                          : STATUS_LABEL[friend.status]}
+                       {friend.status === "offline"
+  ? formatLastSeen(friend.lastSeen)
+  : STATUS_LABEL[friend.status]}
                       </span>
                     </div>
                   </div>

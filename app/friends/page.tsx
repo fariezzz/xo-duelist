@@ -50,6 +50,18 @@ type BusyReason = "sender_busy" | "receiver_busy" | null;
 type FriendFilterTab = "all" | "online" | "offline";
 type FriendSortKey = "elo_desc" | "elo_asc" | "name_az" | "recent";
 
+function isActiveInvite(row: GameInvite): boolean {
+  if (row.status !== "pending") return false;
+
+  if (!row.expires_at) return true;
+
+  const expiresMs = new Date(row.expires_at).getTime();
+
+  if (!Number.isFinite(expiresMs)) return true;
+
+  return expiresMs > Date.now();
+}
+
 function formatFriendError(message: string): string {
   const normalized = String(message ?? "").trim();
   if (!normalized || normalized === "{}" || normalized === "[]") {
@@ -301,11 +313,13 @@ export default function FriendsPage() {
     setTimeout(() => setNotice(null), 2500);
   }
 
-  function redirectToRoom(roomId: string) {
+  function redirectToLobby(roomId: string) {
     const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
-    if (currentPath === `/game/${roomId}`) return;
-    showNotice("Match accepted. Starting game…");
-    setTimeout(() => router.push(`/game/${roomId}`), 700);
+
+    if (currentPath === `/lobby/${roomId}`) return;
+
+    showNotice("Invite accepted. Opening lobby...");
+    setTimeout(() => router.push(`/lobby/${roomId}`), 700);
   }
 
   async function fetchProfiles(ids: string[]): Promise<Map<string, Profile>> {
@@ -344,6 +358,7 @@ export default function FriendsPage() {
       }
       const uid = session.user.id;
       setMeId(uid);
+      await supabaseClient.rpc("expire_stale_invites");
 
       const { data: meProfile, error: meErr } = await supabaseClient
         .from("profiles")
@@ -411,12 +426,13 @@ export default function FriendsPage() {
       );
       setIncomingInvites(
         inviteRows
-          .filter((row) => row.receiver_id === uid && row.status === "pending")
+          .filter((row) => row.receiver_id === uid && isActiveInvite(row))
           .map((row) => ({ ...row, profile: profileMap.get(row.sender_id) }))
       );
+
       setOutgoingInvites(
         inviteRows
-          .filter((row) => row.sender_id === uid && row.status === "pending")
+          .filter((row) => row.sender_id === uid && isActiveInvite(row))
           .map((row) => ({ ...row, profile: profileMap.get(row.receiver_id) }))
       );
 
@@ -433,6 +449,16 @@ export default function FriendsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+  if (!meId) return;
+
+  const timer = setInterval(() => {
+    void loadData();
+  }, 5000);
+
+  return () => clearInterval(timer);
+}, [meId, loadData]);
 
   const profileChannelRef = useRef<ReturnType<typeof supabaseClient.channel> | null>(null);
 
@@ -453,16 +479,16 @@ export default function FriendsPage() {
             prev.map((item) =>
               item.profile.id === row.id
                 ? {
-                    ...item,
-                    profile: {
-                      ...item.profile,
-                      status: row.status ?? item.profile.status,
-                      last_seen: row.last_seen ?? item.profile.last_seen,
-                      elo_rating: typeof row.elo_rating === "number" ? row.elo_rating : item.profile.elo_rating,
-                      username: row.username ?? item.profile.username,
-                      avatar_url: row.avatar_url ?? item.profile.avatar_url,
-                    },
-                  }
+                  ...item,
+                  profile: {
+                    ...item.profile,
+                    status: row.status ?? item.profile.status,
+                    last_seen: row.last_seen ?? item.profile.last_seen,
+                    elo_rating: typeof row.elo_rating === "number" ? row.elo_rating : item.profile.elo_rating,
+                    username: row.username ?? item.profile.username,
+                    avatar_url: row.avatar_url ?? item.profile.avatar_url,
+                  },
+                }
                 : item
             )
           );
@@ -510,7 +536,7 @@ export default function FriendsPage() {
         (payload: { new: GameInvite }) => {
           const row = payload.new;
           if (row.status === "accepted" && row.room_id) {
-            redirectToRoom(row.room_id);
+            redirectToLobby(row.room_id);
             return;
           }
           loadData();
@@ -522,7 +548,7 @@ export default function FriendsPage() {
         (payload: { new: GameInvite }) => {
           const row = payload.new;
           if (row.status === "accepted" && row.room_id) {
-            redirectToRoom(row.room_id);
+            redirectToLobby(row.room_id);
             return;
           }
           if (row.status === "declined") showNotice("Invite declined.");
@@ -596,16 +622,52 @@ export default function FriendsPage() {
     try {
       setActionLoading(`invite-${friendId}`);
       setError(null);
-      if (!meId) throw new Error("Sign in required.");
-      // Server handles all busy checks with specific error codes
-      await supabaseClient.rpc("expire_stale_invites");
-      const { error: err } = await supabaseClient.rpc("send_game_invite", { input_receiver_id: friendId });
-      if (err) throw err;
+
+      if (!meId) {
+        setError("Sign in required.");
+        return;
+      }
+
+      const { error: expireErr } = await supabaseClient.rpc("expire_stale_invites");
+
+      if (expireErr) {
+        console.warn("expire_stale_invites failed:", {
+          message: expireErr.message,
+          details: expireErr.details,
+          hint: expireErr.hint,
+          code: expireErr.code,
+        });
+      }
+
+      const { error: inviteErr } = await supabaseClient.rpc("send_game_invite", {
+        input_receiver_id: friendId,
+      });
+
+      if (inviteErr) {
+        console.warn("send_game_invite failed:", {
+          message: inviteErr.message,
+          details: inviteErr.details,
+          hint: inviteErr.hint,
+          code: inviteErr.code,
+        });
+
+        setError(
+          formatFriendError(
+            extractErrorMessage(inviteErr, "Could not send invite")
+          )
+        );
+        return;
+      }
+
       showNotice("Match invite sent.");
       await loadData();
     } catch (err: unknown) {
-      console.error(err);
-      setError(formatFriendError(extractErrorMessage(err, "Could not send invite")));
+      console.warn("inviteFriend unexpected error:", err);
+      setError(
+        formatFriendError(
+          extractErrorMessage(err, "Could not send invite")
+        )
+      );
     } finally {
       setActionLoading(null);
     }
@@ -637,7 +699,7 @@ export default function FriendsPage() {
       });
       if (err) throw err;
       await loadData();
-      if (accept && roomId) redirectToRoom(roomId as string);
+      if (accept && roomId) redirectToLobby(roomId as string);
       else showNotice("Invite declined.");
     } catch (err: unknown) {
       console.error(err);

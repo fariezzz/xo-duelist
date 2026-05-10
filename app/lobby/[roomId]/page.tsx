@@ -9,6 +9,7 @@ const HEARTBEAT_INTERVAL_MS = 10_000; // Send heartbeat every 10s
 const GRACE_PERIOD_MS = 60_000; // 1 minute grace period on tab close
 const LOBBY_ROOM_STORAGE_KEY = 'xo-duelist-lobby-room';
 
+
 /** Save room presence info to localStorage (survives tab close for grace period) */
 function saveLobbyPresence(roomId: string, role: 'host' | 'guest') {
   try {
@@ -63,6 +64,172 @@ function toLobbyErrorMessage(err: unknown, fallback: string): string {
   return raw;
 }
 
+type LobbyProfile = {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+};
+
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((x) => x[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+}
+
+function LobbyPlayerCard({
+  role,
+  name,
+  avatarUrl,
+  ready,
+  empty,
+}: {
+  role: string;
+  name: string;
+  avatarUrl: string | null;
+  ready: boolean;
+  empty?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        borderRadius: "12px",
+        background: "rgba(0,0,0,0.22)",
+        border: "1px solid rgba(255,255,255,0.06)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            overflow: "hidden",
+            background: avatarUrl
+              ? "transparent"
+              : "linear-gradient(135deg, #7c3aed, #f59e0b)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            color: "white",
+            fontFamily: "var(--font-heading)",
+            fontWeight: 800,
+            fontSize: "0.9rem",
+          }}
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={name}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            getInitials(name)
+          )}
+        </div>
+
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "0.68rem",
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-heading)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              marginBottom: "3px",
+            }}
+          >
+            {role}
+          </div>
+
+          <div
+            style={{
+              fontFamily: "var(--font-heading)",
+              fontWeight: 800,
+              color: empty ? "var(--text-muted)" : "var(--text-primary)",
+              fontSize: "0.95rem",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: 170,
+            }}
+          >
+            {name}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          flexShrink: 0,
+          fontFamily: "var(--font-heading)",
+          fontWeight: 800,
+          fontSize: "0.78rem",
+          color: empty ? "var(--text-muted)" : ready ? "#10b981" : "#cbd5e1",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+        }}
+      >
+        {empty ? (
+  <>
+    <span
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: "#94a3b8",
+        display: "inline-block",
+      }}
+    />
+    Waiting
+  </>
+) : ready ? (
+  <>
+    <span
+      style={{
+        color: "#10b981",
+        fontSize: "0.95rem",
+        lineHeight: 1,
+      }}
+    >
+      ✓
+    </span>
+    Ready
+  </>
+) : (
+  <>
+    <span
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: "#ef4444",
+        display: "inline-block",
+        boxShadow: "0 0 10px rgba(239, 68, 68, 0.45)",
+      }}
+    />
+    Not Ready
+  </>
+)}
+      </div>
+    </div>
+  );
+}
+
 export default function LobbyRoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -78,6 +245,15 @@ export default function LobbyRoomPage() {
   const [meId, setMeId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [reconnected, setReconnected] = useState(false);
+
+  const [playerProfiles, setPlayerProfiles] = useState<{
+    host: LobbyProfile | null;
+    guest: LobbyProfile | null;
+  }>({
+    host: null,
+    guest: null,
+  });
+
   const roomCode = useMemo(() => room?.room_code || '', [room]);
   const isPublicRoom = !!room?.is_public;
 
@@ -96,6 +272,27 @@ export default function LobbyRoomPage() {
       await supabaseClient.rpc('lobby_heartbeat', { input_room_id: roomId });
     } catch { /* non-critical */ }
   }, [roomId]);
+
+  const loadLobbyProfiles = useCallback(async (roomData: any) => {
+    const ids = [roomData.player1_id, roomData.player2_id].filter(Boolean);
+
+    if (ids.length === 0) {
+      setPlayerProfiles({ host: null, guest: null });
+      return;
+    }
+
+    const { data } = await supabaseClient
+      .from("profiles")
+      .select("id, username, avatar_url")
+      .in("id", ids);
+
+    const rows = (data ?? []) as LobbyProfile[];
+
+    setPlayerProfiles({
+      host: rows.find((p) => p.id === roomData.player1_id) ?? null,
+      guest: rows.find((p) => p.id === roomData.player2_id) ?? null,
+    });
+  }, []);
 
   useEffect(() => {
     // Start heartbeat once we have room data
@@ -179,6 +376,7 @@ export default function LobbyRoomPage() {
 
         if (!cancelled) {
           setRoom(data);
+          void loadLobbyProfiles(data);
 
           // Determine role and save presence
           const isHost = data.player1_id === myId;
@@ -209,6 +407,7 @@ export default function LobbyRoomPage() {
         const updated = payload.new || payload.record;
         if (!updated) return;
         setRoom(updated);
+        void loadLobbyProfiles(updated);
         if (updated.status === 'ongoing' && updated.player2_id) {
           clearLobbyPresence();
           router.replace(`/game/${updated.id}`);
@@ -222,7 +421,7 @@ export default function LobbyRoomPage() {
       .subscribe();
 
     return () => { cancelled = true; supabaseClient.removeChannel(channel); };
-  }, [roomId, router]);
+  }, [roomId, router, loadLobbyProfiles]);
 
   async function cancelRoom() {
     try {
@@ -370,6 +569,14 @@ export default function LobbyRoomPage() {
   const myReady = isHost ? hostReady : guestReady;
   const canStart = isHost && hostReady && guestReady && room.player2_id;
 
+  const hostName =
+    playerProfiles.host?.username ??
+    (room.player1_id === meId ? "You" : "Host");
+
+  const guestName = room.player2_id
+    ? playerProfiles.guest?.username ?? (room.player2_id === meId ? "You" : "Guest")
+    : "Waiting for player";
+
   return (
     <>
       <Navbar />
@@ -423,15 +630,15 @@ export default function LobbyRoomPage() {
                 textTransform: 'uppercase',
                 ...(isPublicRoom
                   ? {
-                      background: 'rgba(124,58,237,0.12)',
-                      border: '1px solid rgba(124,58,237,0.25)',
-                      color: '#a78bfa',
-                    }
+                    background: 'rgba(124,58,237,0.12)',
+                    border: '1px solid rgba(124,58,237,0.25)',
+                    color: '#a78bfa',
+                  }
                   : {
-                      background: 'rgba(245,158,11,0.12)',
-                      border: '1px solid rgba(245,158,11,0.25)',
-                      color: '#fbbf24',
-                    }
+                    background: 'rgba(245,158,11,0.12)',
+                    border: '1px solid rgba(245,158,11,0.25)',
+                    color: '#fbbf24',
+                  }
                 ),
               }}>
                 {isPublicRoom ? '🌐 Public Room' : '🔒 Private Room'}
@@ -483,19 +690,76 @@ export default function LobbyRoomPage() {
               </div>
             )}
 
-            {/* Status Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+            {/* Status Summary */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px",
+                marginBottom: "12px",
+              }}
+            >
               {[
-                { label: 'Status', value: room.status },
-                { label: 'Opponent', value: room.player2_id ? 'Joined ✓' : 'Waiting...' },
-                { label: 'Host', value: hostReady ? '✅ READY' : '⬜ Not Ready' },
-                { label: 'Guest', value: room.player2_id ? (guestReady ? '✅ READY' : '⬜ Not Ready') : '—' },
+                { label: "Status", value: room.status },
+                { label: "Opponent", value: room.player2_id ? "Joined ✓" : "Waiting..." },
               ].map((item, i) => (
-                <div key={i} style={{ padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>{item.label}</div>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: '0.95rem' }}>{item.value}</div>
+                <div
+                  key={i}
+                  style={{
+                    padding: "12px",
+                    borderRadius: "10px",
+                    background: "rgba(0,0,0,0.2)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--text-muted)",
+                      fontFamily: "var(--font-heading)",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-heading)",
+                      fontWeight: 700,
+                      fontSize: "0.95rem",
+                    }}
+                  >
+                    {item.value}
+                  </div>
                 </div>
               ))}
+            </div>
+
+            {/* Players Ready */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                marginBottom: "20px",
+              }}
+            >
+              <LobbyPlayerCard
+                role="Host"
+                name={hostName}
+                avatarUrl={playerProfiles.host?.avatar_url ?? null}
+                ready={hostReady}
+              />
+
+              <LobbyPlayerCard
+                role="Guest"
+                name={guestName}
+                avatarUrl={playerProfiles.guest?.avatar_url ?? null}
+                ready={guestReady}
+                empty={!room.player2_id}
+              />
             </div>
 
             {/* Actions */}
