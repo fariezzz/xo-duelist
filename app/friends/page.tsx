@@ -4,11 +4,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation";
 import Navbar from "../../components/Navbar";
 import { supabaseClient } from "../../lib/supabase";
-import { deleteFriendship, fetchFriendSuggestions, searchProfilesByKeyword, type FriendProfileRow } from "../../lib/friendsService";
+import { deleteFriendship, searchProfilesByKeyword, type FriendProfileRow } from "../../lib/friendsService";
 import { parseUserStatus, statusSortWeight, type UserStatus } from "../../lib/statusUtils";
-import FriendSuggestions from "../../components/friends/FriendSuggestions";
 import ConfirmDeleteModal from "../../components/friends/ConfirmDeleteModal";
 import { FriendRow, SearchPlayerRow } from "../../components/friends/FriendRow";
+import { useNotification } from "../../hooks/useNotification";
 
 type FriendRequest = {
   id: string;
@@ -234,9 +234,18 @@ function EmptyBlock({ icon, title, hint }: { icon: string; title: string; hint: 
 
 export default function FriendsPage() {
   const router = useRouter();
+  const { showToast } = useNotification();
+
+  // ── Perf: guard against concurrent loadData calls ──────────────
+  const isLoadingRef = useRef(false);
+  // ── Perf: debounce rapid realtime triggers ──────────────────────
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Perf: in-session profile mini-cache (name/avatar/elo) ──────
+  const profileMiniCache = useRef<Map<string, Profile>>(new Map());
+  // ── Search: debounce ref for real-time search ───────────────────
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [meId, setMeId] = useState<string | null>(null);
-  const [myElo, setMyElo] = useState(1000);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -250,10 +259,7 @@ export default function FriendsPage() {
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<FriendProfileRow[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
 
-  const [suggestions, setSuggestions] = useState<Pick<FriendProfileRow, "id" | "username" | "avatar_url" | "elo_rating">[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   const [friendFilter, setFriendFilter] = useState<FriendFilterTab>("all");
   const [friendSort, setFriendSort] = useState<FriendSortKey>("recent");
@@ -309,8 +315,7 @@ export default function FriendsPage() {
   }, [friendItems, friendFilter, friendSort]);
 
   function showNotice(message: string) {
-    setNotice(message);
-    setTimeout(() => setNotice(null), 2500);
+    showToast({ type: 'success', title: 'Friends', message });
   }
 
   function redirectToLobby(roomId: string) {
@@ -325,28 +330,34 @@ export default function FriendsPage() {
   async function fetchProfiles(ids: string[]): Promise<Map<string, Profile>> {
     const uniqueIds = [...new Set(ids)].filter(Boolean);
     if (uniqueIds.length === 0) return new Map();
+
+    // ── Perf: serve cached entries, only fetch missing ones ────────
+    const result = new Map<string, Profile>();
+    const missing: string[] = [];
+    for (const id of uniqueIds) {
+      const cached = profileMiniCache.current.get(id);
+      if (cached) result.set(id, cached);
+      else missing.push(id);
+    }
+    if (missing.length === 0) return result;
+
     const { data, error: err } = await supabaseClient
       .from("profiles")
       .select("id, username, elo_rating, avatar_url")
-      .in("id", uniqueIds);
+      .in("id", missing);
     if (err) throw err;
-    return new Map((data ?? []).map((p) => [p.id, p as Profile]));
+    for (const p of data ?? []) {
+      const profile = p as Profile;
+      result.set(profile.id, profile);
+      profileMiniCache.current.set(profile.id, profile);
+    }
+    return result;
   }
 
-  const refreshSuggestions = useCallback(async (uid: string, elo: number, exclude: string[]) => {
-    try {
-      setSuggestionsLoading(true);
-      const rows = await fetchFriendSuggestions(uid, elo, exclude, 3);
-      setSuggestions(rows);
-    } catch (e) {
-      console.error(e);
-      setSuggestions([]);
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  }, []);
-
   const loadData = useCallback(async () => {
+    // ── Perf: prevent concurrent in-flight calls ───────────────────
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     try {
       setError(null);
       const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
@@ -358,16 +369,7 @@ export default function FriendsPage() {
       }
       const uid = session.user.id;
       setMeId(uid);
-      await supabaseClient.rpc("expire_stale_invites");
-
-      const { data: meProfile, error: meErr } = await supabaseClient
-        .from("profiles")
-        .select("elo_rating")
-        .eq("id", uid)
-        .single();
-      if (meErr) throw meErr;
-      const elo = meProfile?.elo_rating ?? 1000;
-      setMyElo(elo);
+      // expire_stale_invites is called separately on mount only (see below)
 
       const [friendRes, requestRes, inviteRes] = await Promise.all([
         supabaseClient.from("friends").select("user_id, friend_id, created_at").eq("user_id", uid).order("created_at", { ascending: false }),
@@ -436,29 +438,22 @@ export default function FriendsPage() {
           .map((row) => ({ ...row, profile: profileMap.get(row.receiver_id) }))
       );
 
-      const exclude = [...friendProfileIds, uid];
-      void refreshSuggestions(uid, elo, exclude);
     } catch (err: unknown) {
       console.error(err);
       setError(formatFriendError(extractErrorMessage(err, "Failed to load friends")));
     } finally {
+      isLoadingRef.current = false;
       setLoading(false);
     }
-  }, [router, refreshSuggestions]);
+  }, [router]);
 
   useEffect(() => {
+    // ── Perf: run expire_stale_invites only once on mount ──────────
+    void supabaseClient.rpc("expire_stale_invites");
     void loadData();
   }, [loadData]);
 
-  useEffect(() => {
-  if (!meId) return;
-
-  const timer = setInterval(() => {
-    void loadData();
-  }, 5000);
-
-  return () => clearInterval(timer);
-}, [meId, loadData]);
+  // ── Perf: 5s polling REMOVED — realtime subscriptions handle updates ──
 
   const profileChannelRef = useRef<ReturnType<typeof supabaseClient.channel> | null>(null);
 
@@ -512,22 +507,34 @@ export default function FriendsPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${meId}` },
-        () => loadData()
+        () => {
+          // debounce: collapse rapid-fire events into one reload
+          if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+          realtimeDebounceRef.current = setTimeout(() => loadData(), 300);
+        }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "friend_requests", filter: `sender_id=eq.${meId}` },
-        () => loadData()
+        () => {
+          if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+          realtimeDebounceRef.current = setTimeout(() => loadData(), 300);
+        }
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${meId}` }, () =>
-        loadData()
+      .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${meId}` }, () => {
+          if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+          realtimeDebounceRef.current = setTimeout(() => loadData(), 300);
+        }
       )
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "game_invites", filter: `receiver_id=eq.${meId}` },
         () => {
-          loadData();
-          showNotice("You have a new match invite.");
+          if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+          realtimeDebounceRef.current = setTimeout(() => {
+            loadData();
+            showNotice("You have a new match invite.");
+          }, 300);
         }
       )
       .on(
@@ -557,8 +564,16 @@ export default function FriendsPage() {
       )
       .subscribe();
 
+    // ── Perf: pause realtime-triggered reloads when tab is hidden ──
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void loadData();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       supabaseClient.removeChannel(channel);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     };
   }, [meId, loadData, router]);
 
@@ -582,6 +597,22 @@ export default function FriendsPage() {
     }
   }
 
+  // ── Real-time search: auto-trigger with 300ms debounce ─────────
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (search.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      void runSearch();
+    }, 300);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, meId]);
+
   async function addFriend(profileId: string) {
     try {
       setActionLoading(`add-${profileId}`);
@@ -594,6 +625,25 @@ export default function FriendsPage() {
     } catch (err: unknown) {
       console.error(err);
       setError(formatFriendError(extractErrorMessage(err, "Could not send friend request")));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function cancelFriendRequest(requestId: string, profileId: string) {
+    try {
+      setActionLoading(`cancel-req-${profileId}`);
+      setError(null);
+      const { error: err } = await supabaseClient.rpc("cancel_friend_request", {
+        input_request_id: requestId,
+      });
+      if (err) throw err;
+      showNotice("Friend request cancelled.");
+      await loadData();
+      if (search.trim().length >= 2) await runSearch();
+    } catch (err: unknown) {
+      console.error(err);
+      setError(formatFriendError(extractErrorMessage(err, "Could not cancel friend request")));
     } finally {
       setActionLoading(null);
     }
@@ -801,7 +851,7 @@ export default function FriendsPage() {
             </div>
           </section>
 
-          {notice ? <div className="card fp-alert success">{notice}</div> : null}
+
           {error ? <div className="card fp-alert danger">{error}</div> : null}
 
           <div className="fp-grid">
@@ -816,13 +866,25 @@ export default function FriendsPage() {
                     className="fp-search-input"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && void runSearch()}
                     placeholder="Search by username…"
                     aria-label="Search players"
+                    autoComplete="off"
                   />
-                  <button type="button" className="fp-search-btn" disabled={searching} onClick={() => void runSearch()} aria-label="Search">
-                    {searching ? "…" : "\u{1F50D}"}
-                  </button>
+                  {searching && (
+                    <span
+                      className="animate-spin-slow"
+                      style={{
+                        display: 'inline-block',
+                        width: 16,
+                        height: 16,
+                        border: '2px solid rgba(124,58,237,0.25)',
+                        borderTopColor: '#7c3aed',
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                        marginRight: 12,
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="fp-list">
                   {searching ? (
@@ -831,7 +893,7 @@ export default function FriendsPage() {
                     <EmptyBlock
                       icon={"\u{1F50D}"}
                       title="Find your next duel"
-                      hint="Enter at least two characters, then search."
+                      hint="Start typing a username to search."
                     />
                   ) : searchResults.length === 0 ? (
                     <EmptyBlock icon={"\u{1F50D}"} title="No players found." hint="Try a different keyword or spelling." />
@@ -849,7 +911,20 @@ export default function FriendsPage() {
                             already ? (
                               <span className="fp-badge disabled">Already friends</span>
                             ) : outgoingPending ? (
-                              <span className="fp-badge disabled">Request sent</span>
+                              (() => {
+                                const req = outgoingRequests.find((r) => r.receiver_id === p.id);
+                                return (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost fp-mini"
+                                    disabled={actionLoading === `cancel-req-${p.id}`}
+                                    onClick={() => req && cancelFriendRequest(req.id, p.id)}
+                                    style={{ color: "#f87171" }}
+                                  >
+                                    {actionLoading === `cancel-req-${p.id}` ? "…" : "Cancel request"}
+                                  </button>
+                                );
+                              })()
                             ) : incomingPending ? (
                               <span className="fp-badge violet">Incoming request</span>
                             ) : (
@@ -1059,14 +1134,6 @@ export default function FriendsPage() {
                   </div>
                 </section>
               )}
-
-              <FriendSuggestions
-                suggestions={suggestions}
-                loading={suggestionsLoading}
-                actionLoadingId={actionLoading?.startsWith("add-") ? actionLoading.slice(4) : null}
-                onAdd={(id) => addFriend(id)}
-                onProfileClick={(username) => router.push(`/profile/${encodeURIComponent(username)}`)}
-              />
 
             </aside>
           </div>

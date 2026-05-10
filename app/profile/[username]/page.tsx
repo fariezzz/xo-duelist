@@ -12,7 +12,7 @@ import { parseUserStatus, STATUS_LABEL } from "../../../lib/statusUtils";
 import StatusDot from "../../../components/ui/StatusDot";
 
 type OpponentMap = Record<string, string>;
-type MatchTab = "all" | "pvp" | "ai" | "ranked";
+type MatchTab = "all" | "pvp" | "ai";
 
 function initials(name: string): string {
   const p = name.split(/[\s_]+/).filter(Boolean);
@@ -295,7 +295,6 @@ export default function PublicProfilePage() {
     if (activeTab === "all") return true;
     if (activeTab === "pvp") return m.match_type === "pvp";
     if (activeTab === "ai") return m.match_type?.startsWith("ai") ?? false;
-    if (activeTab === "ranked") return m.match_type === "pvp"; // ranked = pvp in this system
     return true;
   });
 
@@ -303,7 +302,6 @@ export default function PublicProfilePage() {
     { key: "all", label: "All" },
     { key: "pvp", label: "PvP" },
     { key: "ai", label: "AI" },
-    { key: "ranked", label: "Ranked" },
   ];
 
   const parsedStatus = parseUserStatus(profile.status);
