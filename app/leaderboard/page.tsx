@@ -1,10 +1,12 @@
 "use client";
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabaseClient } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 import TierBadge from '../../components/TierBadge';
 
 export default function LeaderboardPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<any[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
 
@@ -59,15 +61,15 @@ export default function LeaderboardPage() {
                         {i < 3 ? medals[i] : i + 1}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: r.avatar_url ? 'transparent' : (i < 3 ? 'linear-gradient(135deg,#7c3aed,#f59e0b)' : 'rgba(255,255,255,0.08)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.75rem', color: 'var(--text-primary)', flexShrink: 0, overflow: 'hidden', border: i < 3 ? '2px solid rgba(124,58,237,0.3)' : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={() => router.push(`/profile/${encodeURIComponent(r.username)}`)} title={`View ${r.username}'s profile`}>
+                          <div className="lb-avatar" style={{ background: r.avatar_url ? 'transparent' : (i < 3 ? 'linear-gradient(135deg,#7c3aed,#f59e0b)' : 'rgba(255,255,255,0.08)'), border: i < 3 ? '2px solid rgba(124,58,237,0.3)' : 'none' }}>
                             {r.avatar_url ? (
                               <img src={r.avatar_url} alt={r.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             ) : (
                               r.username?.charAt(0).toUpperCase() || '?'
                             )}
                           </div>
-                          <span style={{ fontWeight: isMe ? 700 : 500 }}>
+                          <span className="lb-username" style={{ fontWeight: isMe ? 700 : 500 }}>
                             {r.username}
                             {isMe && <span style={{ marginLeft: '6px', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '6px', background: 'rgba(124,58,237,0.2)', color: '#a78bfa', fontWeight: 600 }}>YOU</span>}
                           </span>
@@ -86,6 +88,34 @@ export default function LeaderboardPage() {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .lb-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: var(--font-heading);
+          font-weight: 700;
+          font-size: 0.75rem;
+          color: var(--text-primary);
+          flex-shrink: 0;
+          overflow: hidden;
+          transition: transform 0.15s, border-color 0.2s;
+        }
+        .lb-avatar:hover {
+          transform: scale(1.1);
+          border-color: rgba(167, 139, 250, 0.5) !important;
+        }
+        .lb-username {
+          transition: color 0.2s;
+        }
+        .lb-username:hover {
+          color: #a78bfa;
+        }
+      `}</style>
     </>
   );
 }

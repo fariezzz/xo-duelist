@@ -26,6 +26,7 @@ type RightPanelProps = {
   outgoingInviteMap?: Map<string, string>; // friendId -> inviteId
   onCancelInvite?: (inviteId: string) => void;
   cancellingInviteId?: string | null;
+  onProfileClick?: (username: string) => void;
 };
 
 function initialsFromName(name: string): string {
@@ -72,6 +73,7 @@ export default function RightPanel({
   outgoingInviteMap,
   onCancelInvite,
   cancellingInviteId,
+  onProfileClick,
 }: RightPanelProps) {
   const onlineCount = friends.filter((friend) => friend.status !== "offline").length;
   const [, setTimeTick] = useState(0);
@@ -134,7 +136,7 @@ useEffect(() => {
 
               return (
                 <div key={friend.id} className="rp-friend-row">
-                  <div className="rp-avatar">
+                  <div className={`rp-avatar${onProfileClick ? ' rp-clickable' : ''}`} onClick={onProfileClick ? () => onProfileClick(friend.username) : undefined} title={onProfileClick ? `View ${friend.username}'s profile` : undefined}>
                     {friend.avatarUrl ? (
                       <img src={friend.avatarUrl} alt={friend.username} />
                     ) : (
@@ -142,7 +144,7 @@ useEffect(() => {
                     )}
                   </div>
                   <div className="rp-friend-meta">
-                    <div className="rp-friend-name" title={friend.username}>
+                    <div className={`rp-friend-name${onProfileClick ? ' rp-clickable' : ''}`} title={onProfileClick ? `View ${friend.username}'s profile` : friend.username} onClick={onProfileClick ? () => onProfileClick(friend.username) : undefined}>
                       {friend.username}
                     </div>
                     <div className="rp-friend-status">
@@ -346,6 +348,24 @@ useEffect(() => {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .rp-clickable {
+          cursor: pointer;
+          transition: opacity 0.2s, transform 0.15s;
+        }
+
+        .rp-clickable:hover {
+          opacity: 0.85;
+        }
+
+        .rp-avatar.rp-clickable:hover {
+          transform: scale(1.08);
+          border-color: rgba(167, 139, 250, 0.4);
+        }
+
+        .rp-friend-name.rp-clickable:hover {
+          color: #a78bfa;
         }
 
         .rp-friend-status {

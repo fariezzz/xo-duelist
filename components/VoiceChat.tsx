@@ -23,6 +23,7 @@ interface VoiceChatProps {
   opponentId?: string | null;
   disabled?: boolean;
   compact?: boolean;
+  popoverPosition?: 'up' | 'down';
 }
 
 const ICE_SERVERS = [
@@ -138,6 +139,7 @@ export default function VoiceChat({
   opponentId,
   disabled,
   compact,
+  popoverPosition = 'up',
 }: VoiceChatProps) {
   // We use local state purely to trigger re-renders based on global state
   const [localState, setLocalState] = useState(globalVoiceState);
@@ -688,7 +690,7 @@ export default function VoiceChat({
       {isSettingsOpen && localState.hasJoined && (
         <div className="card animate-fade-in" style={{ 
           position: 'absolute', 
-          bottom: '56px', 
+          ...(popoverPosition === 'up' ? { bottom: '56px' } : { top: '56px' }),
           right: '0', 
           padding: '16px', 
           zIndex: 100, 

@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabaseClient } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 import Board from '../../components/Board';
@@ -202,6 +203,7 @@ function calcCurrentStreak(rows: HistoryRow[], uid: string | null): { label: str
 }
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -707,6 +709,7 @@ export default function HistoryPage() {
 
                   const mode = normalizeMatchType(r.match_type);
                   const badge = getModeBadge(mode);
+                  const isAI = mode === 'ai_ranked' || mode === 'ai_casual';
 
                   let rowBg = 'transparent';
                   let resultColor = 'var(--text-muted)';
@@ -727,8 +730,13 @@ export default function HistoryPage() {
                         {resultLabel}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: 30, height: 30, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-layer-2)' }}>
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: !isAI ? 'pointer' : 'default' }}
+                          className={!isAI ? "history-opp-link" : ""}
+                          onClick={!isAI ? () => router.push(`/profile/${encodeURIComponent(opponentProfile?.username ?? opponentId)}`) : undefined}
+                          title={!isAI ? `View ${(opponentProfile?.username ?? opponentId)}'s profile` : undefined}
+                        >
+                          <div className={!isAI ? "history-opp-avatar" : ""} style={{ width: 30, height: 30, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-layer-2)', border: '1px solid transparent', transition: 'transform 0.15s, border-color 0.2s' }}>
                             {opponentProfile?.avatar_url ? (
                               <img src={opponentProfile.avatar_url} alt={opponentProfile.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             ) : (
@@ -738,7 +746,7 @@ export default function HistoryPage() {
                             )}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
+                            <span className={!isAI ? "history-opp-name" : ""} style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, transition: 'color 0.2s' }}>
                               {opponentProfile?.username ?? `${opponentId.slice(0, 8)}...`}
                             </span>
                             <TierBadge elo={opponentEloAfter ?? 1000} />
@@ -951,6 +959,16 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
+      <style jsx global>{`
+        .history-opp-link:hover .history-opp-avatar {
+          transform: scale(1.1);
+          border-color: rgba(167, 139, 250, 0.4) !important;
+        }
+
+        .history-opp-link:hover .history-opp-name {
+          color: #a78bfa !important;
+        }
+      `}</style>
     </>
   );
 }

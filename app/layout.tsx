@@ -7,6 +7,7 @@ import ToastContainer from '../components/notifications/ToastContainer';
 import BackgroundMusic from '../components/BackgroundMusic';
 import PresenceHeartbeat from '../components/PresenceHeartbeat';
 import GlobalInviteListener from '../components/GlobalInviteListener';
+import GlobalBackButton from '../components/GlobalBackButton';
 
 const rajdhani = Rajdhani({
   weight: ['500', '600', '700'],
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NotificationProvider>
           <PresenceHeartbeat />
           <GlobalInviteListener />
+          <GlobalBackButton />
           {children}
           <ToastContainer />
         </NotificationProvider>

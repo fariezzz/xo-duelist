@@ -61,6 +61,7 @@ type RecentMatchItem = {
   id: string;
   result: "W" | "L" | "D";
   opponentName: string;
+  opponentUsername?: string;
   eloDelta: number;
 };
 
@@ -485,15 +486,17 @@ export default function DashboardPage() {
 
             const mapped: RecentMatchItem[] = recent.map((row) => {
               const opponentId = row.player1_id === uid ? row.player2_id : row.player1_id;
-              const opponentName = truncateName(opponentMap.get(opponentId) ?? "Opponent");
+              const fullOpponentName = opponentMap.get(opponentId) ?? "Opponent";
+              const opponentName = truncateName(fullOpponentName);
               if (!row.winner_id) {
-                return { id: row.id, result: "D", opponentName, eloDelta: 0 };
+                return { id: row.id, result: "D", opponentName, opponentUsername: fullOpponentName, eloDelta: 0 };
               }
               if (row.winner_id === uid) {
                 return {
                   id: row.id,
                   result: "W",
                   opponentName,
+                  opponentUsername: fullOpponentName,
                   eloDelta: row.winner_elo_after - row.winner_elo_before,
                 };
               }
@@ -501,6 +504,7 @@ export default function DashboardPage() {
                 id: row.id,
                 result: "L",
                 opponentName,
+                opponentUsername: fullOpponentName,
                 eloDelta: row.loser_elo_after - row.loser_elo_before,
               };
             });
@@ -821,7 +825,7 @@ export default function DashboardPage() {
                       >
                         {match.result}
                       </span>
-                      <span className="dash-recent-text">vs {match.opponentName}</span>
+                      <span className="dash-recent-text">vs <span className="dash-recent-link" onClick={() => router.push(`/profile/${encodeURIComponent(match.opponentUsername)}`)} title={`View ${match.opponentUsername}'s profile`}>{match.opponentName}</span></span>
                       <span
                         className={`dash-recent-elo ${
                           match.result === "W" ? "is-win" : match.result === "L" ? "is-loss" : "is-draw"
@@ -874,6 +878,7 @@ export default function DashboardPage() {
           outgoingInviteMap={outgoingInviteMap}
           onCancelInvite={(inviteId) => void handleCancelInvite(inviteId)}
           cancellingInviteId={cancellingInviteId}
+          onProfileClick={(username) => router.push(`/profile/${encodeURIComponent(username)}`)}
         />
 
       </div>
@@ -1233,9 +1238,19 @@ export default function DashboardPage() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          color: rgba(255, 255, 255, 0.84);
+          color: #e2e8f0;
+          font-size: 0.88rem;
+          font-weight: 500;
           font-family: var(--font-heading);
-          font-size: 0.82rem;
+        }
+
+        .dash-recent-link {
+          cursor: pointer;
+          transition: color 0.2s;
+        }
+
+        .dash-recent-link:hover {
+          color: #a78bfa;
         }
 
         .dash-recent-elo {

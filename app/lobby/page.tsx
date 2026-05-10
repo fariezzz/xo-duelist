@@ -280,23 +280,30 @@ export default function LobbyPage() {
                       padding: '14px 18px', gap: '14px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                    <div
+                      className="lobby-host-link"
+                      style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0, cursor: 'pointer' }}
+                      onClick={() => router.push(`/profile/${encodeURIComponent(room.host_username)}`)}
+                      title={`View ${room.host_username}'s profile`}
+                    >
                       {/* Avatar */}
-                      <div style={{
+                      <div className="lobby-host-avatar" style={{
                         width: '38px', height: '38px', borderRadius: '50%',
                         background: 'linear-gradient(135deg, rgba(124,58,237,0.3), rgba(245,158,11,0.2))',
                         border: '2px solid rgba(124,58,237,0.3)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', color: '#a78bfa', flexShrink: 0,
+                        transition: 'transform 0.15s, border-color 0.2s',
                       }}>
                         {room.host_username?.[0]?.toUpperCase() || '?'}
                       </div>
 
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{
+                          <span className="lobby-host-name" style={{
                             fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.95rem',
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            transition: 'color 0.2s',
                           }}>
                             {room.host_username}
                           </span>
@@ -484,6 +491,17 @@ export default function LobbyPage() {
           </div>
         </div>
       )}
+      
+      <style jsx global>{`
+        .lobby-host-link:hover .lobby-host-avatar {
+          transform: scale(1.08);
+          border-color: rgba(167, 139, 250, 0.5) !important;
+        }
+        
+        .lobby-host-link:hover .lobby-host-name {
+          color: #a78bfa !important;
+        }
+      `}</style>
     </>
   );
 }

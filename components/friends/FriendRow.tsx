@@ -74,7 +74,7 @@ export function FriendRow({
 
   return (
     <div className="fr-row">
-      <div className="fr-avatar" aria-hidden>
+      <div className="fr-avatar fr-clickable" aria-hidden onClick={onProfile} title={`View ${profile.username}'s profile`}>
         {profile.avatar_url ? (
           <img src={profile.avatar_url} alt="" width={40} height={40} />
         ) : (
@@ -83,7 +83,7 @@ export function FriendRow({
       </div>
 
       <div className="fr-main">
-        <div className="fr-name">{profile.username}</div>
+        <div className="fr-name fr-clickable" onClick={onProfile} title={`View ${profile.username}'s profile`}>{profile.username}</div>
         <div className="fr-meta">
           <span className="fr-dot" style={{ background: sd.color }} title={sd.label} />
           <span className="fr-status-label" style={{ color: sd.color }}>
@@ -157,6 +157,24 @@ export function FriendRow({
           font-weight: 700;
           font-size: 0.75rem;
           color: #f8fafc;
+        }
+
+        .fr-clickable {
+          cursor: pointer;
+          transition: opacity 0.2s, transform 0.15s;
+        }
+
+        .fr-clickable:hover {
+          opacity: 0.85;
+        }
+
+        .fr-avatar.fr-clickable:hover {
+          transform: scale(1.08);
+          border-color: rgba(167, 139, 250, 0.4);
+        }
+
+        .fr-name.fr-clickable:hover {
+          color: #a78bfa;
         }
 
         .fr-main {
@@ -290,12 +308,13 @@ export type SearchPlayerRowProfile = FriendRowProfile;
 export type SearchPlayerRowProps = {
   profile: SearchPlayerRowProfile;
   right: React.ReactNode;
+  onProfile?: () => void;
 };
 
-export function SearchPlayerRow({ profile, right }: SearchPlayerRowProps) {
+export function SearchPlayerRow({ profile, right, onProfile }: SearchPlayerRowProps) {
   return (
     <div className="spr-row">
-      <div className="spr-avatar" aria-hidden>
+      <div className={`spr-avatar${onProfile ? ' spr-clickable' : ''}`} aria-hidden onClick={onProfile} title={onProfile ? `View ${profile.username}'s profile` : undefined}>
         {profile.avatar_url ? (
           <img src={profile.avatar_url} alt="" width={40} height={40} />
         ) : (
@@ -303,7 +322,7 @@ export function SearchPlayerRow({ profile, right }: SearchPlayerRowProps) {
         )}
       </div>
       <div className="spr-main">
-        <div className="spr-name">{profile.username}</div>
+        <div className={`spr-name${onProfile ? ' spr-clickable' : ''}`} onClick={onProfile} title={onProfile ? `View ${profile.username}'s profile` : undefined}>{profile.username}</div>
         <div className="spr-sub">
           <TierBadge elo={profile.elo_rating ?? 1000} />
           <span className="spr-elo">ELO {profile.elo_rating ?? 1000}</span>
@@ -383,6 +402,24 @@ export function SearchPlayerRow({ profile, right }: SearchPlayerRowProps) {
           color: rgba(148, 163, 184, 0.95);
           font-family: var(--font-heading);
           font-weight: 600;
+        }
+
+        .spr-clickable {
+          cursor: pointer;
+          transition: opacity 0.2s, transform 0.15s;
+        }
+
+        .spr-clickable:hover {
+          opacity: 0.85;
+        }
+
+        .spr-avatar.spr-clickable:hover {
+          transform: scale(1.08);
+          border-color: rgba(167, 139, 250, 0.4);
+        }
+
+        .spr-name.spr-clickable:hover {
+          color: #a78bfa;
         }
 
         .spr-right {

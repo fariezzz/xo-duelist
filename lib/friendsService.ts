@@ -30,6 +30,8 @@ export type PublicProfileView = {
   wins: number;
   losses: number;
   draws: number;
+  bio: string | null;
+  created_at: string | null;
 };
 
 export async function deleteFriendship(meId: string, friendId: string): Promise<void> {
@@ -84,7 +86,7 @@ export async function searchProfilesByKeyword(
 export async function getPublicProfileByUsername(username: string): Promise<PublicProfileView | null> {
   const { data, error } = await supabaseClient
     .from("profiles")
-    .select("id, username, elo_rating, avatar_url, status, last_seen, wins, losses, draws")
+    .select("id, username, elo_rating, avatar_url, status, last_seen, wins, losses, draws, bio, created_at")
     .eq("username", username)
     .maybeSingle();
 
@@ -100,6 +102,8 @@ export async function getPublicProfileByUsername(username: string): Promise<Publ
     wins: data.wins ?? 0,
     losses: data.losses ?? 0,
     draws: data.draws ?? 0,
+    bio: data.bio ?? null,
+    created_at: data.created_at ?? null,
   };
 }
 

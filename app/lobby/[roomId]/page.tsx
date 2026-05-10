@@ -651,6 +651,7 @@ export default function LobbyRoomPage() {
                     player2Id={room.player2_id}
                     opponentId={opponentId}
                     compact
+                    popoverPosition="down"
                   />
                 </div>
               )}

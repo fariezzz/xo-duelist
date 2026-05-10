@@ -844,6 +844,7 @@ export default function FriendsPage() {
                         <SearchPlayerRow
                           key={p.id}
                           profile={p}
+                          onProfile={() => router.push(`/profile/${encodeURIComponent(p.username)}`)}
                           right={
                             already ? (
                               <span className="fp-badge disabled">Already friends</span>
@@ -953,6 +954,7 @@ export default function FriendsPage() {
                         <div key={req.id} className="fp-inbox-row">
                           <SearchPlayerRow
                             profile={req.profile}
+                            onProfile={() => router.push(`/profile/${encodeURIComponent(req.profile!.username)}`)}
                             right={
                               <div className="fp-inbox-actions">
                                 <button
@@ -995,6 +997,7 @@ export default function FriendsPage() {
                         <div key={inv.id} className="fp-inbox-row">
                           <SearchPlayerRow
                             profile={inv.profile}
+                            onProfile={() => router.push(`/profile/${encodeURIComponent(inv.profile!.username)}`)}
                             right={
                               <div className="fp-inbox-actions">
                                 <button
@@ -1062,11 +1065,9 @@ export default function FriendsPage() {
                 loading={suggestionsLoading}
                 actionLoadingId={actionLoading?.startsWith("add-") ? actionLoading.slice(4) : null}
                 onAdd={(id) => addFriend(id)}
+                onProfileClick={(username) => router.push(`/profile/${encodeURIComponent(username)}`)}
               />
 
-              <button type="button" className="btn btn-ghost fp-back" onClick={() => router.push("/dashboard")}>
-                ← Home
-              </button>
             </aside>
           </div>
         </div>

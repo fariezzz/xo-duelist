@@ -17,6 +17,7 @@ type FriendSuggestionsProps = {
   loading?: boolean;
   actionLoadingId: string | null;
   onAdd: (profileId: string) => void;
+  onProfileClick?: (username: string) => void;
 };
 
 export default function FriendSuggestions({
@@ -24,6 +25,7 @@ export default function FriendSuggestions({
   loading = false,
   actionLoadingId,
   onAdd,
+  onProfileClick,
 }: FriendSuggestionsProps) {
   return (
     <section className="fs-root card">
@@ -40,7 +42,7 @@ export default function FriendSuggestions({
         <ul className="fs-list">
           {suggestions.map((s) => (
             <li key={s.id} className="fs-row">
-              <div className="fs-avatar" aria-hidden>
+              <div className={`fs-avatar${onProfileClick ? ' fs-clickable' : ''}`} aria-hidden onClick={onProfileClick ? () => onProfileClick(s.username) : undefined} title={onProfileClick ? `View ${s.username}'s profile` : undefined}>
                 {s.avatar_url ? (
                   <img src={s.avatar_url} alt="" width={36} height={36} />
                 ) : (
@@ -48,7 +50,7 @@ export default function FriendSuggestions({
                 )}
               </div>
               <div className="fs-meta">
-                <div className="fs-name">{s.username}</div>
+                <div className={`fs-name${onProfileClick ? ' fs-clickable' : ''}`} onClick={onProfileClick ? () => onProfileClick(s.username) : undefined} title={onProfileClick ? `View ${s.username}'s profile` : undefined}>{s.username}</div>
                 <div className="fs-elo">ELO {s.elo_rating ?? 1000}</div>
               </div>
               <button
@@ -175,6 +177,24 @@ export default function FriendSuggestions({
           padding: 0 12px;
           font-size: 12px;
           min-width: 72px;
+        }
+
+        .fs-clickable {
+          cursor: pointer;
+          transition: opacity 0.2s, transform 0.15s;
+        }
+
+        .fs-clickable:hover {
+          opacity: 0.85;
+        }
+
+        .fs-avatar.fs-clickable:hover {
+          transform: scale(1.08);
+          border-color: rgba(167, 139, 250, 0.4);
+        }
+
+        .fs-name.fs-clickable:hover {
+          color: #a78bfa;
         }
       `}</style>
     </section>

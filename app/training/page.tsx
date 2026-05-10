@@ -174,9 +174,6 @@ export default function TrainingPage() {
                 <button className="btn btn-ghost" onClick={resetAll}>
                   Reset Score
                 </button>
-                <button className="btn btn-ghost" onClick={() => router.push('/dashboard')}>
-                  Back to Home
-                </button>
               </div>
             </aside>
 

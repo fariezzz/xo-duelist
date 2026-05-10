@@ -7,7 +7,37 @@ import ProfileStats from "../../components/profile/ProfileStats";
 import ProfileForm from "../../components/profile/ProfileForm";
 import ChangePasswordForm from "../../components/profile/ChangePasswordForm";
 import DangerZone from "../../components/profile/DangerZone";
+import TierBadge from "../../components/TierBadge";
 import { useProfile } from "../../hooks/useProfile";
+
+/* ── ELO tier helpers ─────────────────────────────────── */
+interface Tier {
+  name: string;
+  min: number;
+  max: number;
+  color: string;
+}
+
+const ELO_TIERS: Tier[] = [
+  { name: "Bronze", min: 0, max: 799, color: "#b45309" },
+  { name: "Silver", min: 800, max: 1199, color: "#9ca3af" },
+  { name: "Gold", min: 1200, max: 1599, color: "#f59e0b" },
+  { name: "Platinum", min: 1600, max: 1999, color: "#38bdf8" },
+  { name: "Diamond", min: 2000, max: 9999, color: "#a78bfa" },
+];
+
+function getEloTier(elo: number): { current: Tier; next: Tier | null; pct: number } {
+  let idx = 0;
+  for (let i = ELO_TIERS.length - 1; i >= 0; i--) {
+    if (elo >= ELO_TIERS[i].min) { idx = i; break; }
+  }
+  const current = ELO_TIERS[idx];
+  const next = idx < ELO_TIERS.length - 1 ? ELO_TIERS[idx + 1] : null;
+  const pct = next
+    ? Math.min(100, Math.max(0, ((elo - current.min) / (next.min - current.min)) * 100))
+    : 100;
+  return { current, next, pct };
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -20,6 +50,7 @@ export default function ProfilePage() {
 
   const [isDirty, setIsDirty] = useState(false);
   const dirtyRef = useRef(false);
+  const [copied, setCopied] = useState(false);
 
   // Keep ref in sync for beforeunload
   useEffect(() => { dirtyRef.current = isDirty; }, [isDirty]);
@@ -39,6 +70,15 @@ export default function ProfilePage() {
   const handleDirtyChange = useCallback((dirty: boolean) => {
     setIsDirty(dirty);
   }, []);
+
+  function handleCopyLink() {
+    if (!profile) return;
+    const url = window.location.origin + "/profile/" + profile.username;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   // Loading state
   if (loading) {
@@ -85,66 +125,156 @@ export default function ProfilePage() {
     );
   }
 
+  /* ── Computed values ────────────────────────────────── */
+  const totalGames = profile.wins + profile.losses + profile.draws;
+  const wPct = totalGames > 0 ? (profile.wins / totalGames) * 100 : 0;
+  const lPct = totalGames > 0 ? (profile.losses / totalGames) * 100 : 0;
+  const dPct = totalGames > 0 ? (profile.draws / totalGames) * 100 : 100;
+  const { current: curTier, next: nextTier, pct: tierPct } = getEloTier(profile.elo_rating);
+
   return (
     <>
       <Navbar />
-      <div className="animate-fade-in" style={{ padding: "32px 24px", paddingTop: "calc(var(--navbar-height) + 32px)", minHeight: "100vh" }}>
-        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+      <div className="animate-fade-in mp-page">
+        <div className="mp-inner">
           {/* Header */}
-          <h1
-            className="heading"
-            style={{ fontSize: "1.8rem", marginBottom: "4px" }}
-          >
-            👤 My Profile
-          </h1>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "28px" }}>
+          <h1 className="heading mp-heading">👤 My Profile</h1>
+          <p className="mp-subtitle">
             Manage your account settings and personal information.
           </p>
 
           {/* Two-column layout */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "280px 1fr",
-              gap: "24px",
-              alignItems: "start",
-            }}
-            className="profile-grid"
-          >
-            {/* Left column: Avatar + Stats */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {/* Avatar card */}
-              <div className="card" style={{ padding: "28px", textAlign: "center" }}>
-                <AvatarUpload
-                  avatarUrl={profile.avatar_url}
-                  username={profile.username}
-                  onUpload={uploadAvatar}
-                  onRemove={removeAvatar}
-                />
-                <div
-                  style={{
-                    fontFamily: "var(--font-heading)",
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                    color: "var(--text-primary)",
-                    marginTop: "12px",
-                  }}
-                >
-                  {profile.username}
+          <div className="mp-grid profile-grid">
+            {/* Left column: Hero + Stats */}
+            <div className="mp-left-col">
+              {/* ── Hero Card ── */}
+              <div className="card mp-hero">
+                {/* Avatar with online dot */}
+                <div className="mp-avatar-wrap">
+                  <AvatarUpload
+                    avatarUrl={profile.avatar_url}
+                    username={profile.username}
+                    onUpload={uploadAvatar}
+                    onRemove={removeAvatar}
+                  />
                 </div>
+
+                <div className="mp-hero-name">{profile.username}</div>
+
                 {profile.bio && (
-                  <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "4px" }}>
-                    {profile.bio}
-                  </div>
+                  <div className="mp-hero-bio">{profile.bio}</div>
                 )}
+
+                {/* Tier badge row */}
+                <div className="mp-badge-row">
+                  <TierBadge elo={profile.elo_rating} />
+                  <span className="mp-elo-num">ELO {profile.elo_rating}</span>
+                </div>
+
+                {/* ELO progress bar */}
+                <div className="mp-elo-progress-wrap">
+                  <div className="mp-elo-label-row">
+                    <span style={{ color: curTier.color, fontWeight: 700 }}>
+                      {curTier.name} {profile.elo_rating}
+                    </span>
+                    {nextTier && (
+                      <span style={{ color: nextTier.color, fontWeight: 700 }}>
+                        {nextTier.name} {nextTier.min}
+                      </span>
+                    )}
+                    {!nextTier && (
+                      <span style={{ color: curTier.color, fontWeight: 700 }}>MAX</span>
+                    )}
+                  </div>
+                  <div className="mp-elo-track">
+                    <div
+                      className="mp-elo-fill"
+                      style={{
+                        width: `${tierPct}%`,
+                        background: nextTier
+                          ? `linear-gradient(90deg, ${curTier.color}, ${nextTier.color})`
+                          : curTier.color,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="mp-hero-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => router.push("/profile/" + profile.username)}
+                  >
+                    👁 View Public Profile
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost mp-copy-btn"
+                    onClick={handleCopyLink}
+                  >
+                    {copied ? "✅ Copied!" : "🔗 Copy Profile Link"}
+                  </button>
+                </div>
               </div>
 
-              {/* Stats card */}
-              <ProfileStats profile={profile} />
+              {/* ── Stats card (enhanced) ── */}
+              <div className="card mp-stats-card">
+                <div className="mp-stats-header">
+                  <h2 className="mp-sec-title">📊 Stats</h2>
+                  <button
+                    type="button"
+                    className="mp-share-btn"
+                    onClick={() => router.push("/profile/" + profile.username)}
+                    title="View public profile"
+                  >
+                    ↗
+                  </button>
+                </div>
+
+                {/* W/L/D stacked bar */}
+                {totalGames > 0 && (
+                  <div className="mp-wld-bar-wrap">
+                    <div className="mp-wld-bar">
+                      {wPct > 0 && (
+                        <div
+                          className="mp-wld-seg mp-wld-w"
+                          style={{ width: `${wPct}%` }}
+                        >
+                          {wPct > 15 && <span>{Math.round(wPct)}%</span>}
+                        </div>
+                      )}
+                      {lPct > 0 && (
+                        <div
+                          className="mp-wld-seg mp-wld-l"
+                          style={{ width: `${lPct}%` }}
+                        >
+                          {lPct > 15 && <span>{Math.round(lPct)}%</span>}
+                        </div>
+                      )}
+                      {dPct > 0 && (
+                        <div
+                          className="mp-wld-seg mp-wld-d"
+                          style={{ width: `${dPct}%` }}
+                        >
+                          {dPct > 15 && <span>{Math.round(dPct)}%</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mp-wld-legend">
+                      <span className="mp-legend-item"><span className="mp-legend-dot mp-dot-w" /> Wins</span>
+                      <span className="mp-legend-item"><span className="mp-legend-dot mp-dot-l" /> Losses</span>
+                      <span className="mp-legend-item"><span className="mp-legend-dot mp-dot-d" /> Draws</span>
+                    </div>
+                  </div>
+                )}
+
+                <ProfileStats profile={profile} />
+              </div>
             </div>
 
             {/* Right column: Forms */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div className="mp-right-col">
               <ProfileForm
                 profile={profile}
                 usernameCheck={usernameCheck}
@@ -163,10 +293,233 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Responsive breakpoint */}
-      <style>{`
+      {/* Scoped styles */}
+      <style jsx>{`
+        .mp-page {
+          padding: 32px 24px;
+          padding-top: calc(var(--navbar-height) + 32px);
+          min-height: 100vh;
+        }
+
+        .mp-inner {
+          max-width: 900px;
+          margin: 0 auto;
+        }
+
+        .mp-heading {
+          font-size: 1.8rem;
+          margin-bottom: 4px;
+        }
+
+        .mp-subtitle {
+          color: var(--text-muted);
+          font-size: 0.9rem;
+          margin-bottom: 28px;
+        }
+
+        .mp-grid {
+          display: grid;
+          grid-template-columns: 300px 1fr;
+          gap: 24px;
+          align-items: start;
+        }
+
+        .mp-left-col,
+        .mp-right-col {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        /* ── Hero Card ── */
+        .mp-hero {
+          padding: 28px;
+          text-align: center;
+          position: relative;
+        }
+
+        .mp-avatar-wrap {
+          position: relative;
+          display: inline-block;
+        }
+
+        .mp-hero-name {
+          font-family: var(--font-heading);
+          font-weight: 700;
+          font-size: 1.2rem;
+          color: var(--text-primary);
+          margin-top: 12px;
+        }
+
+        .mp-hero-bio {
+          color: var(--text-muted);
+          font-size: 0.82rem;
+          margin-top: 4px;
+          line-height: 1.4;
+        }
+
+        .mp-badge-row {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          margin-top: 12px;
+          flex-wrap: wrap;
+        }
+
+        .mp-elo-num {
+          font-family: var(--font-heading);
+          font-weight: 700;
+          color: rgba(226,232,240,0.85);
+          font-size: 0.85rem;
+        }
+
+        /* ELO Progress */
+        .mp-elo-progress-wrap {
+          margin-top: 16px;
+        }
+
+        .mp-elo-label-row {
+          display: flex;
+          justify-content: space-between;
+          font-family: var(--font-heading);
+          font-size: 0.7rem;
+          margin-bottom: 6px;
+          letter-spacing: 0.02em;
+        }
+
+        .mp-elo-track {
+          width: 100%;
+          height: 8px;
+          border-radius: 4px;
+          background: rgba(255,255,255,0.08);
+          overflow: hidden;
+        }
+
+        .mp-elo-fill {
+          height: 100%;
+          border-radius: 4px;
+          transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+          box-shadow: 0 0 10px rgba(255,255,255,0.15);
+        }
+
+        /* Action buttons */
+        .mp-hero-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .mp-copy-btn {
+          font-size: 0.82rem !important;
+          transition: all 0.2s ease;
+        }
+
+        /* ── Stats Card ── */
+        .mp-stats-card {
+          padding: 20px;
+        }
+
+        .mp-stats-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 14px;
+        }
+
+        .mp-sec-title {
+          margin: 0;
+          font-family: var(--font-heading);
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .mp-share-btn {
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-muted);
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .mp-share-btn:hover {
+          background: rgba(167,139,250,0.15);
+          color: #a78bfa;
+          border-color: rgba(167,139,250,0.3);
+        }
+
+        /* W/L/D Bar */
+        .mp-wld-bar-wrap {
+          margin-bottom: 16px;
+        }
+
+        .mp-wld-bar {
+          display: flex;
+          width: 100%;
+          height: 8px;
+          border-radius: 4px;
+          overflow: hidden;
+          background: rgba(255,255,255,0.06);
+        }
+
+        .mp-wld-seg {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          transition: width 0.4s ease;
+        }
+
+        .mp-wld-seg span {
+          font-family: var(--font-heading);
+          font-size: 0;
+          font-weight: 700;
+          color: white;
+        }
+
+        .mp-wld-w { background: #22c55e; }
+        .mp-wld-l { background: #ef4444; }
+        .mp-wld-d { background: #6b7280; }
+
+        .mp-wld-legend {
+          display: flex;
+          gap: 14px;
+          justify-content: center;
+          margin-top: 8px;
+        }
+
+        .mp-legend-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-family: var(--font-heading);
+          font-size: 0.68rem;
+          color: var(--text-muted);
+          font-weight: 600;
+        }
+
+        .mp-legend-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 2px;
+        }
+
+        .mp-dot-w { background: #22c55e; }
+        .mp-dot-l { background: #ef4444; }
+        .mp-dot-d { background: #6b7280; }
+
+        /* ── Responsive ── */
         @media (max-width: 768px) {
-          .profile-grid {
+          .mp-grid {
             grid-template-columns: 1fr !important;
           }
         }
