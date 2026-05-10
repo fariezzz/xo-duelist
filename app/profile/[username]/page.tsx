@@ -556,8 +556,8 @@ export default function PublicProfilePage() {
         .pp-muted { color:rgba(148,163,184,0.92); font-size:0.9rem; margin:0; }
 
         /* ── Match History Tabs ── */
-        .pp-tabs { display:flex; gap:4px; margin-bottom:14px; padding:3px; background:rgba(255,255,255,0.04); border-radius:10px; border:1px solid rgba(255,255,255,0.06); }
-        .pp-tab { flex:1; padding:7px 12px; border:none; background:transparent; color:var(--text-muted); font-family:var(--font-heading); font-size:0.78rem; font-weight:600; cursor:pointer; border-radius:7px; transition:all 0.2s; }
+        .pp-tabs { display:flex; gap:4px; margin-bottom:14px; padding:3px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06); }
+        .pp-tab { flex:1; padding:7px 12px; border:none; background:transparent; color:var(--text-muted); font-family:var(--font-heading); font-size:0.78rem; font-weight:600; cursor:pointer; transition:all 0.2s; }
         .pp-tab:hover { color:#e2e8f0; background:rgba(255,255,255,0.04); }
         .pp-tab-active { color:#a78bfa; background:rgba(167,139,250,0.12); border-bottom:2px solid #a78bfa; }
 
