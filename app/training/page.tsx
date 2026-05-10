@@ -77,7 +77,7 @@ export default function TrainingPage() {
       >
         <div className="game-shell">
           <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-            <h1
+            {/* <h1
               style={{
                 fontFamily: 'var(--font-heading)',
                 fontWeight: 700,
@@ -87,7 +87,7 @@ export default function TrainingPage() {
               }}
             >
               Training Mode
-            </h1>
+            </h1> */}
           </div>
 
           <div className="game-grid" style={{ height: 'auto' }}>

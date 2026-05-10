@@ -1,10 +1,11 @@
 "use client";
 import Link from 'next/link';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabaseClient } from '../lib/supabase';
 import TierBadge from './TierBadge';
 import { clearCachedProfile, getCachedProfile, setCachedProfile } from '../lib/profileCache';
+import NotificationPanel from './NotificationPanel';
 
 interface NavProfile {
   username: string;
@@ -22,14 +23,19 @@ export default function Navbar() {
   const pathname = usePathname() ?? '';
   const [profile, setProfile] = useState<NavProfile | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [pendingFriendRequestCount, setPendingFriendRequestCount] = useState(0);
+  const [notifCount, setNotifCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const handleNotifCountChange = useCallback((count: number) => {
+    setNotifCount(count);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     let profileChannel: ReturnType<typeof supabaseClient.channel> | null = null;
-    let friendRequestChannel: ReturnType<typeof supabaseClient.channel> | null = null;
 
     async function fetchProfileData(userId: string) {
       const { data, error } = await supabaseClient
@@ -72,59 +78,21 @@ export default function Navbar() {
         .subscribe();
     }
 
-    async function refreshPendingFriendRequestCount(userId: string) {
-      const { count, error } = await supabaseClient
-        .from('friend_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('receiver_id', userId)
-        .eq('status', 'pending');
-
-      if (cancelled) return;
-      if (error) {
-        setPendingFriendRequestCount(0);
-        return;
-      }
-      setPendingFriendRequestCount(count ?? 0);
-    }
-
-    function mountFriendRequestListener(userId: string) {
-      if (friendRequestChannel) supabaseClient.removeChannel(friendRequestChannel);
-      friendRequestChannel = supabaseClient
-        .channel(`friend-request-nav-${userId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'friend_requests', filter: `receiver_id=eq.${userId}` },
-          (payload: FriendRequestChangePayload) => {
-            if (cancelled) return;
-            const nextStatus = payload.new?.status;
-            const prevStatus = payload.old?.status;
-            if (nextStatus === 'pending' || prevStatus === 'pending' || !nextStatus) {
-              void refreshPendingFriendRequestCount(userId);
-            }
-          }
-        )
-        .subscribe();
-    }
-
     async function syncForUser(userId: string | null) {
       setCurrentUserId(userId);
       if (!userId) {
         setProfile(null);
-        setPendingFriendRequestCount(0);
+        setNotifCount(0);
         if (profileChannel) supabaseClient.removeChannel(profileChannel);
-        if (friendRequestChannel) supabaseClient.removeChannel(friendRequestChannel);
         profileChannel = null;
-        friendRequestChannel = null;
         return;
       }
 
       const cached = getCachedProfile(userId);
       if (cached) setProfile((prev) => prev ? { ...prev, elo: cached.elo } : null);
       await fetchProfileData(userId);
-      await refreshPendingFriendRequestCount(userId);
       if (cancelled) return;
       mountProfileListener(userId);
-      mountFriendRequestListener(userId);
     }
 
     (async () => {
@@ -136,7 +104,7 @@ export default function Navbar() {
     const auth = supabaseClient.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
         setProfile(null);
-        setPendingFriendRequestCount(0);
+        setNotifCount(0);
         if (typeof window !== 'undefined' && window.location.pathname !== '/') {
           window.location.href = '/';
         }
@@ -149,7 +117,6 @@ export default function Navbar() {
       cancelled = true;
       auth.data.subscription.unsubscribe();
       if (profileChannel) supabaseClient.removeChannel(profileChannel);
-      if (friendRequestChannel) supabaseClient.removeChannel(friendRequestChannel);
     };
   }, []);
 
@@ -166,7 +133,10 @@ export default function Navbar() {
 
   useEffect(() => {
     function handleKeydown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setDropdownOpen(false);
+      if (e.key === 'Escape') {
+        setDropdownOpen(false);
+        setNotifOpen(false);
+      }
     }
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
@@ -275,51 +245,77 @@ export default function Navbar() {
             History
           </Link>
 
-          {/* Notification + separator + ELO */}
+          {/* Notification Bell + separator + ELO */}
           {profile && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button
-                onClick={() => router.push('/friends')}
-                aria-label={pendingFriendRequestCount > 0 ? `Open notifications. You have ${pendingFriendRequestCount} new friend request(s).` : 'Open notifications'}
-                style={{
-                  width: 24,
-                  height: 24,
-                  position: 'relative',
-                  borderRadius: 0,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.95rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'opacity 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.opacity = '0.85';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                }}
-              >
-                {'\u{1F514}'}
-                {pendingFriendRequestCount > 0 && (
-                  <span
-                    aria-hidden
-                    style={{
-                      position: 'absolute',
-                      top: -2,
-                      right: -2,
-                      width: 9,
-                      height: 9,
-                      borderRadius: '999px',
-                      background: '#ef4444',
-                      boxShadow: '0 0 0 2px rgba(10,15,30,0.9)',
-                    }}
+              {/* Bell with notification panel */}
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => {
+                    setNotifOpen((o) => !o);
+                    setDropdownOpen(false);
+                  }}
+                  aria-label={notifCount > 0 ? `${notifCount} notifications` : 'No notifications'}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    position: 'relative',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: notifOpen ? 'rgba(124,58,237,0.15)' : 'transparent',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!notifOpen) e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!notifOpen) e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  {'\u{1F514}'}
+                  {notifCount > 0 && (
+                    <span
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        minWidth: 16,
+                        height: 16,
+                        borderRadius: '999px',
+                        background: '#ef4444',
+                        boxShadow: '0 0 0 2px rgba(10,15,30,0.9), 0 0 8px rgba(239,68,68,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.6rem',
+                        fontFamily: 'var(--font-heading)',
+                        fontWeight: 800,
+                        color: '#fff',
+                        padding: '0 4px',
+                      }}
+                    >
+                      {notifCount > 9 ? '9+' : notifCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Panel */}
+                {currentUserId && (
+                  <NotificationPanel
+                    userId={currentUserId}
+                    isOpen={notifOpen}
+                    onClose={() => setNotifOpen(false)}
+                    onCountChange={handleNotifCountChange}
                   />
                 )}
-              </button>
+              </div>
 
               <span
                 aria-hidden
@@ -333,6 +329,7 @@ export default function Navbar() {
               <button
                 onClick={() => {
                   setDropdownOpen(false);
+                  setNotifOpen(false);
                   router.push('/profile');
                 }}
                 aria-label="Open profile from ELO"
@@ -373,7 +370,7 @@ export default function Navbar() {
           {profile && (
             <div ref={dropdownRef} style={{ position: 'relative' }}>
               <button
-                onClick={() => setDropdownOpen((o) => !o)}
+                onClick={() => { setDropdownOpen((o) => !o); setNotifOpen(false); }}
                 aria-expanded={dropdownOpen}
                 aria-haspopup="menu"
                 aria-controls="nav-user-menu"
@@ -521,5 +518,3 @@ function DropdownItem({
     </button>
   );
 }
-
-

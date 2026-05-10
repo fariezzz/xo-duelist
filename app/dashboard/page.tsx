@@ -105,7 +105,7 @@ export default function DashboardPage() {
   const [invitingFriendId, setInvitingFriendId] = useState<string | null>(null);
   const [cancellingInviteId, setCancellingInviteId] = useState<string | null>(null);
   const [outgoingInviteMap, setOutgoingInviteMap] = useState<Map<string, string>>(new Map());
-  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
+
 
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [recentMatches, setRecentMatches] = useState<RecentMatchItem[]>([]);
@@ -231,10 +231,7 @@ export default function DashboardPage() {
     setOutgoingInviteMap(map);
   }
 
-  function showInviteNotice(msg: string) {
-    setInviteNotice(msg);
-    setTimeout(() => setInviteNotice(null), 2500);
-  }
+
 
   async function handleInviteFriend(friendId: string) {
     if (!viewerId || invitingFriendId) return;
@@ -248,23 +245,23 @@ export default function DashboardPage() {
       if (err) {
         const msg = err.message?.toLowerCase() ?? "";
         if (msg.includes("sender_busy")) {
-          showInviteNotice("You are in a match or matchmaking.");
+          console.log("You are in a match or matchmaking.");
         } else if (msg.includes("receiver_busy")) {
-          showInviteNotice("Your friend is in a match or matchmaking.");
+          console.log("Your friend is in a match or matchmaking.");
         } else if (msg.includes("invite_already_pending")) {
-          showInviteNotice("An invite is already pending.");
+          console.log("An invite is already pending.");
         } else if (msg.includes("not_friends")) {
-          showInviteNotice("You must be friends first.");
+          console.log("You must be friends first.");
         } else {
-          showInviteNotice(err.message || "Could not send invite.");
+          console.log(err.message || "Could not send invite.");
         }
         return;
       }
-      showInviteNotice("Match invite sent!");
+      console.log("Match invite sent!");
       await refreshOutgoingInvites(viewerId);
     } catch (err) {
       console.error("Invite failed:", err);
-      showInviteNotice("Could not send invite.");
+      console.log("Could not send invite.");
     } finally {
       setInvitingFriendId(null);
     }
@@ -278,14 +275,14 @@ export default function DashboardPage() {
         input_invite_id: inviteId,
       });
       if (err) {
-        showInviteNotice(err.message || "Could not cancel invite.");
+        console.log(err.message || "Could not cancel invite.");
         return;
       }
-      showInviteNotice("Invite cancelled.");
+      console.log("Invite cancelled.");
       await refreshOutgoingInvites(viewerId);
     } catch (err) {
       console.error("Cancel invite failed:", err);
-      showInviteNotice("Could not cancel invite.");
+      console.log("Could not cancel invite.");
     } finally {
       setCancellingInviteId(null);
     }
@@ -347,6 +344,10 @@ export default function DashboardPage() {
     }
     if (key === "friends") {
       router.push("/friends");
+      return;
+    }
+    if (key === "leaderboard") {
+      router.push("/leaderboard");
       return;
     }
     router.push("/history");
@@ -877,30 +878,7 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Invite notice toast */}
-      {inviteNotice && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "24px",
-            left: "45%",
-            transform: "translateX(-50%)",
-            zIndex: 5100,
-            padding: "10px 20px",
-            borderRadius: "10px",
-            background: "rgba(13, 21, 38, 0.96)",
-            border: "1px solid rgba(124, 58, 237, 0.35)",
-            color: "#e2e8f0",
-            fontFamily: "var(--font-heading)",
-            fontWeight: 700,
-            fontSize: "0.88rem",
-            boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
-            animation: "scaleIn 0.15s ease-out forwards",
-          }}
-        >
-          {inviteNotice}
-        </div>
-      )}
+
 
       <MatchFoundModal
         open={!!aiMatchFound}

@@ -4,50 +4,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
-
-const HEARTBEAT_INTERVAL_MS = 10_000; // Send heartbeat every 10s
-const GRACE_PERIOD_MS = 60_000; // 1 minute grace period on tab close
-const LOBBY_ROOM_STORAGE_KEY = 'xo-duelist-lobby-room';
+import { useLobbyPresence, type LobbyPresenceEvent } from '../../../hooks/useLobbyPresence';
 
 
-/** Save room presence info to localStorage (survives tab close for grace period) */
-function saveLobbyPresence(roomId: string, role: 'host' | 'guest') {
-  try {
-    localStorage.setItem(LOBBY_ROOM_STORAGE_KEY, JSON.stringify({
-      roomId,
-      role,
-      leftAt: null, // will be set by pagehide/beforeunload
-      timestamp: Date.now(),
-    }));
-  } catch { /* ignore */ }
-}
-
-/** Mark the lobby presence as "left" with a timestamp for grace period tracking */
-function markLobbyLeft() {
-  try {
-    const raw = localStorage.getItem(LOBBY_ROOM_STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    data.leftAt = Date.now();
-    localStorage.setItem(LOBBY_ROOM_STORAGE_KEY, JSON.stringify(data));
-  } catch { /* ignore */ }
-}
-
-/** Clear lobby presence entirely (room was cancelled/left/started) */
-function clearLobbyPresence() {
-  try {
-    localStorage.removeItem(LOBBY_ROOM_STORAGE_KEY);
-  } catch { /* ignore */ }
-}
-
-/** Get saved lobby presence */
-function getLobbyPresence(): { roomId: string; role: string; leftAt: number | null; timestamp: number } | null {
-  try {
-    const raw = localStorage.getItem(LOBBY_ROOM_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch { return null; }
-}
 
 function toLobbyErrorMessage(err: unknown, fallback: string): string {
   const raw = String((err as any)?.message || fallback);
@@ -244,7 +203,8 @@ export default function LobbyRoomPage() {
   const [startLoading, setStartLoading] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [reconnected, setReconnected] = useState(false);
+  const [meUsername, setMeUsername] = useState('');
+
 
   const [playerProfiles, setPlayerProfiles] = useState<{
     host: LobbyProfile | null;
@@ -257,21 +217,11 @@ export default function LobbyRoomPage() {
   const roomCode = useMemo(() => room?.room_code || '', [room]);
   const isPublicRoom = !!room?.is_public;
 
-  // Refs for latest values (used in event handlers without re-registering)
+  // Refs for latest values
   const roomRef = useRef(room);
-  const meIdRef = useRef(meId);
   useEffect(() => { roomRef.current = room; }, [room]);
-  useEffect(() => { meIdRef.current = meId; }, [meId]);
 
-  // ── Heartbeat: keep room alive while tab is open ──────────────
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const sendHeartbeat = useCallback(async () => {
-    if (!roomId) return;
-    try {
-      await supabaseClient.rpc('lobby_heartbeat', { input_room_id: roomId });
-    } catch { /* non-critical */ }
-  }, [roomId]);
 
   const loadLobbyProfiles = useCallback(async (roomData: any) => {
     const ids = [roomData.player1_id, roomData.player2_id].filter(Boolean);
@@ -294,65 +244,58 @@ export default function LobbyRoomPage() {
     });
   }, []);
 
-  useEffect(() => {
-    // Start heartbeat once we have room data
-    if (!room || room.status !== 'waiting') return;
+  // ── Presence event handler (runs on OTHER player's client) ────
+  const handlePresenceEvent = useCallback(async (event: LobbyPresenceEvent) => {
+    const currentRoom = roomRef.current;
+    if (!currentRoom) return;
 
-    // Immediately send one heartbeat
-    sendHeartbeat();
+    if (event.type === 'player_joined') {
+      console.log(`${event.player.username} joined the room`);
+      return;
+    }
 
-    heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    if (event.type === 'guest_left') {
+      // Guest disconnected → remove guest from room, reset ready states
+      await supabaseClient
+        .from('game_rooms')
+        .update({
+          player2_id: null,
+          player1_ready: false,
+          player2_ready: false,
+          status: 'waiting',
+        })
+        .eq('id', roomId)
+        .eq('status', 'waiting');
 
-    return () => {
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-    };
-  }, [room?.id, room?.status, sendHeartbeat]);
+      console.log('Opponent left the room');
+    }
 
-  // ── Cleanup stale rooms periodically (client-side trigger) ────
-  useEffect(() => {
-    // Run cleanup once on mount & every 30s to catch stale rooms
-    const runCleanup = async () => {
-      try {
-        await supabaseClient.rpc('cleanup_stale_lobby_rooms', { input_timeout_seconds: 60 });
-      } catch { /* non-critical */ }
-    };
+    if (event.type === 'host_left') {
+      // Host disconnected → cancel the room
+      await supabaseClient
+        .from('game_rooms')
+        .update({ status: 'cancelled' })
+        .eq('id', roomId)
+        .in('status', ['waiting']);
 
-    runCleanup();
-    const cleanupInterval = setInterval(runCleanup, 30_000);
-    return () => clearInterval(cleanupInterval);
-  }, []);
+      console.log('Host left the room');
+      setTimeout(() => router.push('/lobby'), 2000);
+    }
+  }, [roomId, router]);
 
-  // ── On tab close/refresh: mark presence as "left" with timestamp ──
-  useEffect(() => {
-    const onLeaving = () => {
-      // Mark the time we left so we can check grace period on return
-      markLobbyLeft();
-    };
+  // Determine host/guest for presence
+  const isHost = !!meId && room?.player1_id === meId;
 
-    window.addEventListener('beforeunload', onLeaving);
-    window.addEventListener('pagehide', onLeaving);
-    return () => {
-      window.removeEventListener('beforeunload', onLeaving);
-      window.removeEventListener('pagehide', onLeaving);
-    };
-  }, []);
+  // ── Presence hook — the ONLY disconnect detection mechanism ────
+  const { disconnect } = useLobbyPresence({
+    roomId: room?.status === 'waiting' ? roomId : '',
+    userId: meId ?? '',
+    username: meUsername,
+    isHost,
+    onEvent: handlePresenceEvent,
+  });
 
-  // ── On visibility change: resume heartbeat when tab becomes visible ──
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && roomRef.current?.status === 'waiting') {
-        // Immediately send a heartbeat when tab becomes visible again
-        sendHeartbeat();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [sendHeartbeat]);
-
-  // ── Main data fetch + realtime subscription ───────────────────
+  // ── Main data fetch + postgres realtime subscription ──────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -363,36 +306,27 @@ export default function LobbyRoomPage() {
         const myId = sessionData.session.user.id;
         setMeId(myId);
 
+        // Fetch username for presence tracking
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('username')
+          .eq('id', myId)
+          .maybeSingle();
+        if (profile?.username) setMeUsername(profile.username);
+
         const { data, error } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).maybeSingle();
         if (error) throw error;
-        if (!data) {
-          // Room doesn't exist — check if it was within grace period
-          const presence = getLobbyPresence();
-          if (presence?.roomId === roomId) {
-            clearLobbyPresence();
-          }
-          throw new Error('Lobby not found — it may have expired.');
+        if (!data) throw new Error('Lobby not found — it may have expired.');
+
+        // Check if room is cancelled/finished already
+        if (data.status === 'cancelled') {
+          if (!cancelled) setRoomCancelled(true);
+          return;
         }
 
         if (!cancelled) {
           setRoom(data);
           void loadLobbyProfiles(data);
-
-          // Determine role and save presence
-          const isHost = data.player1_id === myId;
-          saveLobbyPresence(roomId, isHost ? 'host' : 'guest');
-
-          // Check if we're reconnecting after a tab close
-          const presence = getLobbyPresence();
-          if (presence?.leftAt) {
-            const elapsed = Date.now() - presence.leftAt;
-            if (elapsed < GRACE_PERIOD_MS) {
-              setReconnected(true);
-              setTimeout(() => setReconnected(false), 3000);
-            }
-          }
-          // Clear leftAt since we're back
-          saveLobbyPresence(roomId, isHost ? 'host' : 'guest');
         }
       } catch (err: any) {
         if (!cancelled) setError(toLobbyErrorMessage(err, 'Failed to load lobby'));
@@ -401,35 +335,42 @@ export default function LobbyRoomPage() {
       }
     })();
 
+    // Subscribe to DB changes for this room (ready state, status, etc.)
     const channel = supabaseClient
-      .channel(`lobby-room-${roomId}`)
+      .channel(`lobby-db-${roomId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, (payload: any) => {
         const updated = payload.new || payload.record;
         if (!updated) return;
         setRoom(updated);
         void loadLobbyProfiles(updated);
+
         if (updated.status === 'ongoing' && updated.player2_id) {
-          clearLobbyPresence();
+          disconnect();
           router.replace(`/game/${updated.id}`);
+        }
+        if (updated.status === 'cancelled') {
+          disconnect();
+          setRoomCancelled(true);
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, () => {
-        // Room was deleted (host cancelled or heartbeat expired) — show cancelled UI
-        clearLobbyPresence();
+        disconnect();
         setRoomCancelled(true);
       })
       .subscribe();
 
     return () => { cancelled = true; supabaseClient.removeChannel(channel); };
-  }, [roomId, router, loadLobbyProfiles]);
+  }, [roomId, router, loadLobbyProfiles, disconnect]);
+
+  // ── Actions ───────────────────────────────────────────────────
 
   async function cancelRoom() {
     try {
       if (!room?.id) return;
       setShowConfirm(null);
+      disconnect(); // triggers leave event on opponent
       const { error } = await supabaseClient.rpc('cancel_lobby_room', { input_room_id: room.id });
       if (error) throw error;
-      clearLobbyPresence();
       setRoomCancelled(true);
     } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to cancel room')); }
   }
@@ -438,9 +379,9 @@ export default function LobbyRoomPage() {
     try {
       if (!room?.id) return;
       setShowConfirm(null);
+      disconnect(); // triggers leave event on host
       const { error } = await supabaseClient.rpc('leave_lobby_room', { input_room_id: room.id });
       if (error) throw error;
-      clearLobbyPresence();
       setLeftRoom(true);
     } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to leave room')); }
   }
@@ -450,8 +391,8 @@ export default function LobbyRoomPage() {
       if (!room?.id) return;
       setReadyLoading(true);
       if (!meId) throw new Error('Session not found');
-      const isHost = room.player1_id === meId;
-      const currentReady = isHost ? room.player1_ready : room.player2_ready;
+      const amHost = room.player1_id === meId;
+      const currentReady = amHost ? room.player1_ready : room.player2_ready;
       const { error } = await supabaseClient.rpc('set_lobby_ready', { input_room_id: room.id, input_ready: !currentReady });
       if (error) throw error;
     } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to update ready')); }
@@ -464,7 +405,7 @@ export default function LobbyRoomPage() {
       setStartLoading(true);
       const { error } = await supabaseClient.rpc('start_lobby_room', { input_room_id: room.id });
       if (error) throw error;
-      clearLobbyPresence();
+      // Game started → redirect handled by realtime UPDATE subscription
     } catch (err: any) {
       setError(toLobbyErrorMessage(err, 'Failed to start game'));
     } finally { setStartLoading(false); }
@@ -476,6 +417,7 @@ export default function LobbyRoomPage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
 
   if (loading) return (
     <>
@@ -489,7 +431,7 @@ export default function LobbyRoomPage() {
   if (roomCancelled) return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px' }}>
+      <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', paddingTop: '24px', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
         <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', borderColor: 'rgba(239,68,68,0.2)' }}>
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚫</div>
           <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Room Cancelled</h2>
@@ -522,7 +464,7 @@ export default function LobbyRoomPage() {
   if (leftRoom) return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px' }}>
+      <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', paddingTop: '24px', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
         <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', borderColor: 'rgba(245,158,11,0.2)' }}>
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚶</div>
           <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Left Room</h2>
@@ -553,7 +495,7 @@ export default function LobbyRoomPage() {
   if (error && !room) return (
     <>
       <Navbar />
-      <div className="page-container" style={{ padding: '32px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
+      <div className="page-container" style={{ paddingTop: 'calc(var(--navbar-height) + 32px)', paddingRight: '32px', paddingBottom: '32px', paddingLeft: '32px' }}>
         <div className="card" style={{ maxWidth: '480px', margin: '0 auto', borderColor: 'rgba(239,68,68,0.3)' }}>
           <p style={{ color: '#ef4444' }}>{error}</p>
         </div>
@@ -563,7 +505,6 @@ export default function LobbyRoomPage() {
 
   if (!room) return null;
 
-  const isHost = !!meId && room.player1_id === meId;
   const hostReady = !!room.player1_ready;
   const guestReady = !!room.player2_ready;
   const myReady = isHost ? hostReady : guestReady;
@@ -580,222 +521,230 @@ export default function LobbyRoomPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
-        <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-          <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳ Waiting Room</h1>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '28px', fontSize: '0.95rem' }}>
-            {isPublicRoom
-              ? 'Your room is visible in the lobby. When both players are ready, the host starts the game.'
-              : 'Share the room code. When both players are ready, the host starts the game.'}
-          </p>
+      <div className="page-container animate-fade-in" style={{ paddingTop: 'calc(var(--navbar-height) + 24px)', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
+        <div style={{ maxWidth: '820px', margin: '0 auto' }}>
 
-          {/* Reconnection notice */}
-          {reconnected && (
-            <div className="animate-fade-in" style={{
-              marginBottom: '16px',
-              padding: '12px 18px',
-              borderRadius: '12px',
-              background: 'rgba(16,185,129,0.08)',
-              border: '1px solid rgba(16,185,129,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              fontSize: '0.88rem',
-              color: 'var(--color-success)',
-            }}>
-              <span style={{ fontSize: '1.1rem' }}>🔄</span>
-              <span>Reconnected to room successfully!</span>
+          {/* Header row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h1 className="heading" style={{ fontSize: '1.6rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.4rem' }}>⏳</span> Waiting Room
+              </h1>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
+                {isPublicRoom ? 'Visible in lobby — anyone can join.' : 'Share the code to invite a friend.'}
+              </p>
             </div>
-          )}
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '5px 14px', borderRadius: '20px', fontSize: '0.75rem',
+              fontFamily: 'var(--font-heading)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+              ...(isPublicRoom
+                ? { background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' }
+                : { background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }
+              ),
+            }}>
+              {isPublicRoom ? '🌐 Public' : '🔒 Private'}
+            </span>
+          </div>
 
           {error && (
-            <div className="card" style={{ borderColor: 'rgba(239,68,68,0.3)', marginBottom: '20px', padding: '14px 20px', color: '#ef4444', fontSize: '0.9rem' }}>
+            <div style={{ marginBottom: '16px', padding: '12px 18px', borderRadius: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '0.88rem' }}>
               {error}
             </div>
           )}
 
-          <div className="card" style={{ marginBottom: '20px' }}>
-            {/* Room Type Badge */}
-            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '5px 14px',
-                borderRadius: '20px',
-                fontSize: '0.78rem',
-                fontFamily: 'var(--font-heading)',
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                ...(isPublicRoom
-                  ? {
-                    background: 'rgba(124,58,237,0.12)',
-                    border: '1px solid rgba(124,58,237,0.25)',
-                    color: '#a78bfa',
-                  }
-                  : {
-                    background: 'rgba(245,158,11,0.12)',
-                    border: '1px solid rgba(245,158,11,0.25)',
-                    color: '#fbbf24',
-                  }
-                ),
-              }}>
-                {isPublicRoom ? '🌐 Public Room' : '🔒 Private Room'}
-              </span>
-            </div>
+          {/* ── Two-Column Layout ─────────────────────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '16px', alignItems: 'start' }}>
 
-            {/* Room Code — only for private rooms */}
-            {!isPublicRoom && (
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Room Code</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    padding: '12px 20px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(124,58,237,0.3)',
-                    background: 'rgba(0,0,0,0.3)',
-                    fontFamily: 'var(--font-heading)',
-                    fontWeight: 700,
-                    fontSize: '1.8rem',
-                    letterSpacing: '0.35em',
-                    color: '#a78bfa',
-                    textShadow: '0 0 20px rgba(124,58,237,0.3)',
-                  }}>
-                    {roomCode}
+            {/* LEFT — Room Info */}
+            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+
+              {/* Room Code / Public Info header bar */}
+              {!isPublicRoom ? (
+                <div style={{
+                  padding: '16px 20px',
+                  background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(245,158,11,0.05))',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Room Code</div>
+                    <div style={{
+                      fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: '1.5rem', letterSpacing: '0.3em',
+                      color: '#a78bfa', textShadow: '0 0 20px rgba(124,58,237,0.3)',
+                    }}>{roomCode}</div>
                   </div>
-                  <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '12px 16px' }}>
+                  <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '8px 14px', fontSize: '0.82rem' }}>
                     {copied ? '✓ Copied' : '📋 Copy'}
                   </button>
                 </div>
-              </div>
-            )}
-
-            {/* Public room info banner */}
-            {isPublicRoom && (
-              <div style={{
-                marginBottom: '20px',
-                padding: '14px 18px',
-                borderRadius: '12px',
-                background: 'rgba(124,58,237,0.06)',
-                border: '1px solid rgba(124,58,237,0.12)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-              }}>
-                <span style={{ fontSize: '1.2rem' }}>📡</span>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-                  This room is visible in the lobby — anyone can join.
-                </span>
-              </div>
-            )}
-
-            {/* Status Summary */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "10px",
-                marginBottom: "12px",
-              }}
-            >
-              {[
-                { label: "Status", value: room.status },
-                { label: "Opponent", value: room.player2_id ? "Joined ✓" : "Waiting..." },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: "12px",
-                    borderRadius: "10px",
-                    background: "rgba(0,0,0,0.2)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--text-muted)",
-                      fontFamily: "var(--font-heading)",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: "var(--font-heading)",
-                      fontWeight: 700,
-                      fontSize: "0.95rem",
-                    }}
-                  >
-                    {item.value}
-                  </div>
+              ) : (
+                <div style={{
+                  padding: '14px 20px',
+                  background: 'linear-gradient(135deg, rgba(124,58,237,0.06), rgba(16,185,129,0.04))',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: 'var(--text-muted)',
+                }}>
+                  <span style={{ fontSize: '1rem' }}>📡</span>
+                  Visible in the lobby — anyone can join
                 </div>
-              ))}
+              )}
+
+              {/* Status chips */}
+              <div style={{ padding: '16px 20px 12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+                  {[
+                    { label: 'Status', value: room.status, color: room.status === 'waiting' ? '#fbbf24' : '#10b981' },
+                    { label: 'Opponent', value: room.player2_id ? 'Joined ✓' : 'Waiting...', color: room.player2_id ? '#10b981' : '#94a3b8' },
+                  ].map((item, i) => (
+                    <div key={i} style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>{item.label}</div>
+                      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', color: item.color, textTransform: 'capitalize' }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Players — VS style */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                  <LobbyPlayerCard
+                    role="Host"
+                    name={hostName}
+                    avatarUrl={playerProfiles.host?.avatar_url ?? null}
+                    ready={hostReady}
+                  />
+
+                  {/* VS divider */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 0',
+                  }}>
+                    <div style={{ flex: 1, height: '1px', background: 'linear-gradient(to right, transparent, rgba(124,58,237,0.3), transparent)' }} />
+                    <span style={{
+                      fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '0.7rem', letterSpacing: '0.15em',
+                      color: 'rgba(167,139,250,0.5)', textTransform: 'uppercase',
+                    }}>VS</span>
+                    <div style={{ flex: 1, height: '1px', background: 'linear-gradient(to right, transparent, rgba(245,158,11,0.3), transparent)' }} />
+                  </div>
+
+                  <LobbyPlayerCard
+                    role="Guest"
+                    name={guestName}
+                    avatarUrl={playerProfiles.guest?.avatar_url ?? null}
+                    ready={guestReady}
+                    empty={!room.player2_id}
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Players Ready */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-                marginBottom: "20px",
-              }}
-            >
-              <LobbyPlayerCard
-                role="Host"
-                name={hostName}
-                avatarUrl={playerProfiles.host?.avatar_url ?? null}
-                ready={hostReady}
-              />
+            {/* RIGHT — Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-              <LobbyPlayerCard
-                role="Guest"
-                name={guestName}
-                avatarUrl={playerProfiles.guest?.avatar_url ?? null}
-                ready={guestReady}
-                empty={!room.player2_id}
-              />
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Ready toggle — big prominent button */}
               <button
                 className={`btn ${myReady ? 'btn-ghost' : 'btn-success'}`}
                 onClick={toggleReady}
                 disabled={readyLoading}
-                style={{ width: '100%' }}
+                style={{
+                  width: '100%', padding: '18px', fontSize: '1rem',
+                  borderRadius: '14px', fontWeight: 800,
+                  ...(myReady ? {} : { boxShadow: '0 4px 20px rgba(16,185,129,0.25)' }),
+                }}
               >
-                {readyLoading ? 'Updating...' : myReady ? '⬜ Set Not Ready' : '✅ Set Ready'}
+                {readyLoading ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <span className="animate-spin-slow" style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block' }} />
+                    Updating...
+                  </span>
+                ) : myReady ? '⬜ Set Not Ready' : '✅ Set Ready'}
               </button>
 
+              {/* Start Game — only host */}
               {isHost && (
                 <button
                   className="btn btn-primary btn-lg"
                   onClick={startRoom}
                   disabled={!canStart || startLoading}
-                  style={{ width: '100%' }}
+                  style={{
+                    width: '100%', padding: '18px', fontSize: '1rem', borderRadius: '14px',
+                    fontWeight: 800, letterSpacing: '0.02em',
+                    ...(canStart ? { boxShadow: '0 4px 24px rgba(124,58,237,0.35)', animation: 'pulse-glow 2s ease-in-out infinite' } : {}),
+                  }}
                 >
                   {startLoading ? 'Starting...' : '🚀 Start Game'}
                 </button>
               )}
-            </div>
-          </div>
 
-          {/* Bottom actions */}
-          <div style={{ display: 'flex', gap: '10px' }}>
-            {isHost ? (
-              <button className="btn btn-danger" onClick={() => setShowConfirm('cancel')} style={{ flex: 1 }}>Cancel Room</button>
-            ) : (
-              <button className="btn btn-danger" onClick={() => setShowConfirm('exit')} style={{ flex: 1 }}>🚶 Exit Room</button>
-            )}
+              {/* Ready status summary card */}
+              <div style={{
+                padding: '14px 16px', borderRadius: '12px',
+                background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.04)',
+              }}>
+                <div style={{ fontSize: '0.72rem', fontFamily: 'var(--font-heading)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '10px' }}>Ready Status</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {[
+                    { label: hostName, ready: hostReady, you: isHost },
+                    { label: room.player2_id ? guestName : '—', ready: guestReady, you: !isHost && !!room.player2_id },
+                  ].map((p, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {p.label}
+                        {p.you && <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '6px', background: 'rgba(124,58,237,0.15)', color: '#a78bfa', fontWeight: 700 }}>YOU</span>}
+                      </span>
+                      <span style={{
+                        fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: '0.78rem',
+                        color: p.ready ? '#10b981' : '#ef4444',
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.ready ? '#10b981' : '#ef4444', display: 'inline-block' }} />
+                        {p.ready ? 'Ready' : 'Not Ready'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.04)', margin: '2px 0' }} />
+
+              {/* Exit / Cancel */}
+              {isHost ? (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setShowConfirm('cancel')}
+                  style={{
+                    width: '100%', padding: '12px', fontSize: '0.88rem', borderRadius: '12px',
+                    color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)',
+                  }}
+                >
+                  ✕ Cancel Room
+                </button>
+              ) : (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setShowConfirm('exit')}
+                  style={{
+                    width: '100%', padding: '12px', fontSize: '0.88rem', borderRadius: '12px',
+                    color: '#f59e0b', borderColor: 'rgba(245,158,11,0.2)',
+                  }}
+                >
+                  🚪 Exit Room
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Responsive: stack on mobile */}
+      <style>{`
+        @media (max-width: 680px) {
+          div[style*="gridTemplateColumns: '1fr 300px'"],
+          div[style*="grid-template-columns"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+
 
       {/* ── Confirm Dialog ──────────────────────────────── */}
       {showConfirm && (
@@ -863,6 +812,9 @@ export default function LobbyRoomPage() {
           </div>
         </div>
       )}
+
+
     </>
   );
 }
+
