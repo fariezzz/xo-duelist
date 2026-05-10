@@ -454,9 +454,14 @@ export default function Sidebar({
             border-top: 1px solid rgba(255, 255, 255, 0.08);
             background: rgba(13, 21, 38, 0.97);
             grid-template-rows: 1fr;
-            position: relative;
-            z-index: 8;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            z-index: 50;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
           }
+
 
           .sb-brand,
           .sb-bottom {

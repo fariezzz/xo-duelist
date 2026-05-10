@@ -905,7 +905,7 @@ export default function DashboardPage() {
 
       <style jsx>{`
         .dash-layout {
-          height: 100vh;
+          height: 100dvh;
           display: grid;
           grid-template-columns: 220px minmax(0, 1fr) 280px;
           overflow: hidden;
@@ -1327,7 +1327,7 @@ export default function DashboardPage() {
         @media (max-width: 768px) {
           .dash-layout {
             grid-template-columns: 1fr;
-            grid-template-rows: minmax(0, 1fr) auto;
+            grid-template-rows: 1fr;
           }
 
           .dash-main {
@@ -1336,7 +1336,7 @@ export default function DashboardPage() {
             flex-direction: column;
             overflow-y: auto;
             padding: 10px;
-            padding-bottom: 14px;
+            padding-bottom: 90px; /* Space for the fixed bottom nav */
           }
 
           :global(.sb-root) {

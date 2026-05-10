@@ -68,7 +68,7 @@ function getAchievements(wins: number, losses: number, draws: number, elo: numbe
     { emoji: "🎯", label: "First Win", earned: wins >= 1 },
     { emoji: "🔥", label: "On Fire", earned: wins >= 10 },
     { emoji: "⚡", label: "Centurion", earned: total >= 100 },
-    { emoji: "🏆", label: "Champion", earned: elo >= 1200 },
+    { emoji: "🏆", label: "Champion", earned: elo >= 1400 },
   ];
 }
 
