@@ -98,6 +98,7 @@ export default function GameRoom() {
   const [skillTargetMode, setSkillTargetMode] = useState(false);
   const [activeSkillUse, setActiveSkillUse] = useState<SkillType | null>(null);
   const [skillTargetCells, setSkillTargetCells] = useState<number[]>([]);
+  const [shakingCell, setShakingCell] = useState<number | null>(null);
   const [isShuffling, setIsShuffling] = useState(false);
   const [newSkillFlag, setNewSkillFlag] = useState(false);
   const [fumbleWarning, setFumbleWarning] = useState(false);
@@ -573,7 +574,8 @@ export default function GameRoom() {
   const curseCells: CurseCell[] = room?.curse_cells ? (typeof room.curse_cells === 'string' ? JSON.parse(room.curse_cells) : room.curse_cells) : [];
   const turnCount: number = room?.turn_count ?? 0;
   const nextShuffleAt: number = room?.next_shuffle_at ?? 12;
-  const effectiveNextShuffleAt: number = turnCount < 12 ? Math.max(nextShuffleAt, 12) : nextShuffleAt;
+  // Bug fix: always enforce minimum of 12, not only when turnCount < 12
+  const effectiveNextShuffleAt: number = Math.max(nextShuffleAt, 12);
   const turnCurse: PlayerCurse | null = room?.current_turn === meId ? myCurse : oppCurse;
 
   /* ── Use Skill ───────────────────────────────────── */
@@ -614,7 +616,6 @@ export default function GameRoom() {
       const newTurn = turnCount + 1;
       update.turn_count = newTurn;
       update.current_turn = amP1 ? room.player2_id : room.player1_id;
-      if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
 
       // Check win after OVERWRITE
       if (activeSkillUse === 'OVERWRITE') {
@@ -684,7 +685,6 @@ export default function GameRoom() {
       const update: any = { board_state: newBoard, last_move_at: new Date().toISOString() };
       const newTurnCount = turnCount + 1;
       update.turn_count = newTurnCount;
-      if (turnCount < 12 && nextShuffleAt < 12) update.next_shuffle_at = 12;
 
       // Power Cell check
       const newPowerCells = [...powerCells];
@@ -777,6 +777,14 @@ export default function GameRoom() {
     if (skillTargetMode && skillTargetCells.includes(i)) {
       applySkillToCell(i);
     } else if (!skillTargetMode) {
+      // Under BLIND curse: if player clicks an occupied cell, shake + notify
+      const isBlind = myCurse?.type === 'BLIND' && myCurse.turns_remaining > 0;
+      if (isBlind && board[i] !== null) {
+        setShakingCell(i);
+        showToast({ type: 'error', title: '🌑 Blind!', message: 'That cell is already occupied!' });
+        setTimeout(() => setShakingCell(null), 600);
+        return;
+      }
       makeMove(i);
     }
   }
@@ -838,7 +846,8 @@ export default function GameRoom() {
 
       const tc = latestRoom.turn_count ?? 0;
       const nsa = latestRoom.next_shuffle_at ?? 12;
-      const effectiveNsa = tc < 12 ? Math.max(nsa, 12) : nsa;
+      // Bug fix: always enforce minimum of 12
+      const effectiveNsa = Math.max(nsa, 12);
       const newTurnCount = tc + 1;
 
       const update: Record<string, unknown> = {
@@ -847,7 +856,6 @@ export default function GameRoom() {
         last_move_at: nowIso,
         turn_count: newTurnCount,
       };
-      if (tc < 12 && nsa < 12) update.next_shuffle_at = 12;
 
       const timedOutCurseRaw = latestRoom[curseKey];
       const timedOutCurse: PlayerCurse | null = timedOutCurseRaw
@@ -1092,9 +1100,10 @@ export default function GameRoom() {
                   winningCells={[]}
                   powerCells={powerCells}
                   curseCells={curseCells}
-                  blindedSymbol={myCurse?.type === 'BLIND' && myCurse.turns_remaining > 0 ? (amP1 ? 'O' : 'X') : null}
+                  blindedSymbol={myCurse?.type === 'BLIND' && myCurse.turns_remaining > 0 ? 'ALL' : null}
                   mySymbol={mySymbol === '?' ? undefined : mySymbol}
                   skillTargetCells={skillTargetMode ? skillTargetCells : []}
+                  shakingCell={shakingCell}
                   isShuffling={isShuffling}
                 />
               </div>

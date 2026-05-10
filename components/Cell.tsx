@@ -11,6 +11,7 @@ type Props = {
   isBlinded?: boolean;
   skillTargetMode?: boolean;
   isShuffling?: boolean;
+  isShaking?: boolean;
 };
 
 export default function Cell({
@@ -23,6 +24,7 @@ export default function Cell({
   isBlinded,
   skillTargetMode,
   isShuffling,
+  isShaking,
 }: Props) {
   const isBarrier = value === 'BARRIER';
   const isEmpty = value === null;
@@ -84,7 +86,7 @@ export default function Cell({
   }
 
   // Blind overlay
-  const blindOverlay = isBlinded && isFilled ? (
+  const blindOverlay = isBlinded ? (
     <div style={{
       position: 'absolute', inset: 0,
       background: 'rgba(10, 15, 30, 0.85)',
@@ -127,7 +129,7 @@ export default function Cell({
   }
 
   return (
-    <button style={baseStyle} onClick={onClick} disabled={isBarrier || (disabled && !skillTargetMode)}>
+    <button className={isShaking ? 'animate-fumble-shake' : ''} style={baseStyle} onClick={onClick} disabled={(!isBlinded && isBarrier) || (disabled && !skillTargetMode)}>
       {content}
       {blindOverlay}
     </button>

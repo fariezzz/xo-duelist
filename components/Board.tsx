@@ -11,9 +11,10 @@ type Props = {
   winningCells?: number[];
   powerCells?: PowerCell[];
   curseCells?: CurseCell[];
-  blindedSymbol?: 'X' | 'O' | null; // if set, hide this symbol's cells
+  blindedSymbol?: 'X' | 'O' | 'ALL' | null; // if set, hide this symbol's cells
   mySymbol?: 'X' | 'O';
   skillTargetCells?: number[];
+  shakingCell?: number | null;
   isShuffling?: boolean;
 };
 
@@ -22,6 +23,7 @@ export default function Board({
   powerCells = [], curseCells = [],
   blindedSymbol, mySymbol,
   skillTargetCells = [],
+  shakingCell = null,
   isShuffling,
 }: Props) {
   const powerSet = new Set(powerCells.filter(p => !p.claimed).map(p => p.index));
@@ -41,21 +43,22 @@ export default function Board({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, max-content)', gap: 'var(--board-cell-gap)' }}>
         {board.map((v, i) => {
           const isSkillTarget = skillTargetCells.includes(i);
-          // For BLIND curse: hide opponent symbols
-          const isBlinded = blindedSymbol !== null && v === blindedSymbol && v !== mySymbol;
+          // For BLIND curse: hide all if 'ALL', else hide opponent symbols
+          const isBlinded = blindedSymbol === 'ALL' ? true : (blindedSymbol !== null && v === blindedSymbol && v !== mySymbol);
 
           return (
             <Cell
               key={i}
               value={v}
               onClick={() => onMove(i)}
-              disabled={disabled || (v !== null && !isSkillTarget)}
+              disabled={disabled || (!isBlinded && v !== null && !isSkillTarget)}
               highlight={winningCells.includes(i)}
               isPowerCell={powerSet.has(i)}
               isCursedRevealed={curseRevealedSet.has(i)}
               isBlinded={isBlinded}
               skillTargetMode={isSkillTarget}
               isShuffling={isShuffling}
+              isShaking={shakingCell === i}
             />
           );
         })}
