@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   username: string;
@@ -60,32 +61,11 @@ export default function DangerZone({ username, onDelete }: Props) {
       </div>
 
       {/* Confirmation Modal */}
-      {showModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 110,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(0,0,0,0.8)",
-            backdropFilter: "blur(10px)",
-            animation: "fade-in 0.2s ease-out",
-          }}
-          onClick={() => !deleting && setShowModal(false)}
-        >
+      {typeof window !== "undefined" && showModal && createPortal(
+        <div className="delete-modal-overlay" onClick={() => !deleting && setShowModal(false)}>
           <div
-            className="card"
+            className="card delete-modal-card"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: "440px",
-              width: "90%",
-              padding: "32px",
-              borderColor: "rgba(239,68,68,0.3)",
-              boxShadow: "0 0 60px rgba(239,68,68,0.15)",
-              animation: "scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards",
-            }}
           >
             <h3
               style={{
@@ -155,8 +135,34 @@ export default function DangerZone({ username, onDelete }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
+
+      <style jsx>{`
+        .delete-modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+          background: rgba(2, 6, 23, 0.78);
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
+          animation: fade-in 0.2s ease-out;
+        }
+
+        .delete-modal-card {
+          max-width: 440px;
+          width: min(100%, 440px);
+          padding: 32px;
+          border-color: rgba(239, 68, 68, 0.3);
+          box-shadow: 0 0 60px rgba(239, 68, 68, 0.15);
+          animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+      `}</style>
     </>
   );
 }

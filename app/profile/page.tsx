@@ -44,7 +44,7 @@ export default function ProfilePage() {
   const {
     profile, loading, saving, error,
     usernameCheck, checkUsername,
-    updateProfile, updateEmail, updatePassword,
+    updateProfile, updateEmail, linkProvider, unlinkProvider, createPassword, updatePassword,
     uploadAvatar, removeAvatar, deleteAccount,
   } = useProfile();
 
@@ -131,6 +131,11 @@ export default function ProfilePage() {
   const lPct = totalGames > 0 ? (profile.losses / totalGames) * 100 : 0;
   const dPct = totalGames > 0 ? (profile.draws / totalGames) * 100 : 100;
   const { current: curTier, next: nextTier, pct: tierPct } = getEloTier(profile.elo_rating);
+  const hasEmailIdentity = profile.linkedAccounts.some((account) => account.provider === "email" && !!account.identityId);
+  const hasOauthIdentity = profile.linkedAccounts.some((account) =>
+    ["google", "github", "discord"].includes(account.provider) && !!account.identityId
+  );
+  const needsPassword = hasOauthIdentity && !hasEmailIdentity;
 
   return (
     <>
@@ -282,10 +287,23 @@ export default function ProfilePage() {
                 onCheckUsername={checkUsername}
                 onSave={updateProfile}
                 onSaveEmail={updateEmail}
+                onLinkProvider={linkProvider}
+                onUnlinkProvider={unlinkProvider}
                 onDirtyChange={handleDirtyChange}
               />
 
-              <ChangePasswordForm onSubmit={updatePassword} />
+              {needsPassword ? (
+                <ChangePasswordForm
+                  onSubmit={(_, newPassword) => createPassword(newPassword)}
+                  requireCurrentPassword={false}
+                  title="Create Password"
+                  submitLabel="Create Password"
+                  savingLabel="Creating..."
+                  successMessage="Password created. You can sign in with email + password."
+                />
+              ) : (
+                <ChangePasswordForm onSubmit={(current, newPassword) => updatePassword(current ?? "", newPassword)} />
+              )}
 
               <DangerZone username={profile.username} onDelete={deleteAccount} />
             </div>

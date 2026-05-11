@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { supabaseClient, setRememberMe } from '../lib/supabase';
+import { getAuthRedirectUrl } from '../lib/auth-redirect';
 import { useRouter } from 'next/navigation';
 import { useNotification } from '../hooks/useNotification';
 
@@ -70,15 +71,36 @@ export default function Home() {
     })();
   }, [router]);
 
-  // Show error from OAuth callback
+  // Show callback status messages
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('error') === 'auth_callback_failed') {
       showToast({ type: 'error', title: 'Login Failed', message: 'OAuth authentication failed. Please try again.' });
       window.history.replaceState({}, '', '/');
+      return;
+    }
+    if (params.get('password_set') === '1') {
+      showToast({
+        type: 'success',
+        title: 'Password Created',
+        message: 'You can now sign in with email + password.',
+      });
+      window.history.replaceState({}, '', '/');
     }
   }, [showToast]);
+
+  useEffect(() => {
+    const { data: auth } = supabaseClient.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        router.replace('/auth/update-password');
+      }
+    });
+
+    return () => {
+      auth.subscription.unsubscribe();
+    };
+  }, [router]);
 
   // Don't render the form while checking session
   if (checkingSession) return null;
@@ -89,10 +111,14 @@ export default function Home() {
     setRememberMe(rememberMe);
 
     if (mode === 'register') {
+      const emailRedirectTo = getAuthRedirectUrl('/auth/callback');
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
-        options: { data: { username } },
+        options: {
+          data: { username },
+          ...(emailRedirectTo ? { emailRedirectTo } : {}),
+        },
       });
       if (error) {
         showToast({ type: 'error', title: 'Registration Failed', message: error.message });
@@ -125,10 +151,11 @@ export default function Home() {
   async function handleOAuth(provider: OAuthProvider) {
     setOauthLoading(provider);
     try {
+      const redirectTo = getAuthRedirectUrl('/auth/callback');
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          ...(redirectTo ? { redirectTo } : {}),
         },
       });
       if (error) {

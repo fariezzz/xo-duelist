@@ -14,6 +14,7 @@ export default function AvatarUpload({ avatarUrl, username, onUpload, onRemove }
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
 
   const initials = (username || "?")
     .split("_")
@@ -72,8 +73,13 @@ export default function AvatarUpload({ avatarUrl, username, onUpload, onRemove }
     }
   }
 
+  React.useEffect(() => {
+    setImageFailed(false);
+  }, [avatarUrl, preview]);
+
   const displaySrc = preview || avatarUrl;
   const isUploading = progress !== null;
+  const showImage = !!displaySrc && !imageFailed;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
@@ -104,10 +110,12 @@ export default function AvatarUpload({ avatarUrl, username, onUpload, onRemove }
             justifyContent: "center",
           }}
         >
-          {displaySrc ? (
+          {showImage ? (
             <img
               src={displaySrc}
               alt="Avatar"
+              referrerPolicy="no-referrer"
+              onError={() => setImageFailed(true)}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
           ) : (

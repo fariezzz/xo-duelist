@@ -2,7 +2,12 @@
 import React, { useState } from "react";
 
 interface Props {
-  onSubmit: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  onSubmit: (currentPassword: string | null, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  requireCurrentPassword?: boolean;
+  title?: string;
+  successMessage?: string;
+  submitLabel?: string;
+  savingLabel?: string;
 }
 
 function getStrength(pw: string): { level: "weak" | "medium" | "strong"; pct: number; color: string } {
@@ -13,7 +18,14 @@ function getStrength(pw: string): { level: "weak" | "medium" | "strong"; pct: nu
   return { level: "weak", pct: 30, color: "#ef4444" };
 }
 
-export default function ChangePasswordForm({ onSubmit }: Props) {
+export default function ChangePasswordForm({
+  onSubmit,
+  requireCurrentPassword = true,
+  title = "Change Password",
+    successMessage = "Password updated. Please log in again.",
+  submitLabel = "Update Password",
+  savingLabel = "Updating...",
+}: Props) {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -27,14 +39,18 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
   const strength = getStrength(newPw);
   const confirmMatch = confirmPw.length > 0 && newPw === confirmPw;
   const confirmMismatch = confirmPw.length > 0 && newPw !== confirmPw;
-  const canSubmit = currentPw.length > 0 && newPw.length >= 8 && confirmMatch && !saving;
+  const canSubmit =
+    (!requireCurrentPassword || currentPw.length > 0) &&
+    newPw.length >= 8 &&
+    confirmMatch &&
+    !saving;
 
   async function handleSubmit() {
     setError(null);
     setSuccess(false);
     setSaving(true);
 
-    const result = await onSubmit(currentPw, newPw);
+    const result = await onSubmit(requireCurrentPassword ? currentPw : null, newPw);
     setSaving(false);
 
     if (result.success) {
@@ -83,10 +99,9 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
           marginTop: 0,
         }}
       >
-        🔒 Change Password
+          {title}
       </h2>
 
-      {/* Error */}
       {error && (
         <div
           style={{
@@ -104,7 +119,6 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
         </div>
       )}
 
-      {/* Success */}
       {success && (
         <div
           style={{
@@ -118,28 +132,31 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
             border: "1px solid rgba(16,185,129,0.2)",
           }}
         >
-          ✓ Password updated! Please log in again.
+            {successMessage}
         </div>
       )}
 
-      {/* Current Password */}
-      <div style={{ marginBottom: "20px" }}>
-        <label style={labelStyle}>Current Password</label>
-        <div style={{ position: "relative" }}>
-          <input
-            className="input"
-            type={showCurrent ? "text" : "password"}
-            value={currentPw}
-            onChange={(e) => { setCurrentPw(e.target.value); setError(null); }}
-            style={{ paddingRight: "40px" }}
-          />
-          <button onClick={() => setShowCurrent(!showCurrent)} style={eyeBtnStyle} type="button">
-            {showCurrent ? "🙈" : "👁"}
-          </button>
+      {requireCurrentPassword && (
+        <div style={{ marginBottom: "20px" }}>
+          <label style={labelStyle}>Current Password</label>
+          <div style={{ position: "relative" }}>
+            <input
+              className="input"
+              type={showCurrent ? "text" : "password"}
+              value={currentPw}
+              onChange={(e) => {
+                setCurrentPw(e.target.value);
+                setError(null);
+              }}
+              style={{ paddingRight: "40px" }}
+            />
+            <button onClick={() => setShowCurrent(!showCurrent)} style={eyeBtnStyle} type="button">
+              {showCurrent ? "Hide" : "Show"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* New Password */}
       <div style={{ marginBottom: "6px" }}>
         <label style={labelStyle}>New Password</label>
         <div style={{ position: "relative" }}>
@@ -152,12 +169,11 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
             style={{ paddingRight: "40px" }}
           />
           <button onClick={() => setShowNew(!showNew)} style={eyeBtnStyle} type="button">
-            {showNew ? "🙈" : "👁"}
+            {showNew ? "Hide" : "Show"}
           </button>
         </div>
       </div>
 
-      {/* Strength indicator */}
       {newPw.length > 0 && (
         <div style={{ marginBottom: "20px" }}>
           <div
@@ -185,7 +201,6 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
         </div>
       )}
 
-      {/* Confirm Password */}
       <div style={{ marginBottom: "24px" }}>
         <label style={labelStyle}>Confirm New Password</label>
         <div style={{ position: "relative" }}>
@@ -200,7 +215,7 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
             }}
           />
           <button onClick={() => setShowConfirm(!showConfirm)} style={eyeBtnStyle} type="button">
-            {showConfirm ? "🙈" : "👁"}
+            {showConfirm ? "Hide" : "Show"}
           </button>
         </div>
         {confirmMismatch && (
@@ -210,12 +225,11 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
         )}
         {confirmMatch && (
           <div style={{ color: "#10b981", fontSize: "0.78rem", fontFamily: "var(--font-heading)", marginTop: "4px" }}>
-            ✓ Passwords match
+            Passwords match
           </div>
         )}
       </div>
 
-      {/* Submit */}
       <button
         className="btn btn-primary"
         onClick={handleSubmit}
@@ -225,10 +239,10 @@ export default function ChangePasswordForm({ onSubmit }: Props) {
         {saving ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
             <span className="animate-spin-slow" style={{ display: "inline-block", width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%" }} />
-            Updating...
+            {savingLabel}
           </span>
         ) : (
-          "🔑 Update Password"
+          submitLabel
         )}
       </button>
     </div>

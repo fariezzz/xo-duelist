@@ -26,12 +26,17 @@ export default function Navbar() {
   const [notifCount, setNotifCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const handleNotifCountChange = useCallback((count: number) => {
     setNotifCount(count);
   }, []);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [profile?.avatarUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,8 +415,14 @@ export default function Navbar() {
                     border: '2px solid rgba(124,58,237,0.3)',
                   }}
                 >
-                  {profile.avatarUrl ? (
-                    <img src={profile.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {profile.avatarUrl && !avatarFailed ? (
+                    <img
+                      src={profile.avatarUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarFailed(true)}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
                   ) : (
                     <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.7rem', color: 'white' }}>
                       {initials}

@@ -30,6 +30,8 @@ import { useStatusManager } from '../../../hooks/useStatusManager';
 import LiveChat from '../../../components/LiveChat';
 import VoiceChat from '../../../components/VoiceChat';
 
+type GamePresenceWindow = Window & { __XO_GAME_VISIBILITY_OVERRIDE__?: boolean };
+
 /* Tier helper — matches TierBadge logic */
 function getTierName(elo: number) {
   if (elo >= 1400) return 'Diamond';
@@ -62,6 +64,7 @@ export default function GameRoom() {
   const { setStatus } = useStatusManager(meId);
   const [mySymbol, setMySymbol] = useState<'X' | 'O' | '?'>('?');
   const [turnTimerKey, setTurnTimerKey] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
   const [playerProfiles, setPlayerProfiles] = useState<{ p1: { username: string; elo: number; avatarUrl: string | null }; p2: { username: string; elo: number; avatarUrl: string | null } } | null>(null);
   const [aiMatchFound, setAiMatchFound] = useState<{
@@ -76,6 +79,24 @@ export default function GameRoom() {
   const lastStatusRef = useRef<string | null>(null);
   const timerWarningShown = useRef(false);
   const lastShuffleAtRef = useRef<number>(12);
+  const [isVisibilityPaused, setIsVisibilityPaused] = useState(false);
+  const hiddenOfflineTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hiddenStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 768px)');
+    const handleChange = () => setIsMobile(media.matches);
+    handleChange();
+
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleChange);
+      return () => media.removeEventListener('change', handleChange);
+    }
+
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, []);
 
   /* Result state */
   const [resultData, setResultData] = useState<{
@@ -202,6 +223,72 @@ export default function GameRoom() {
       showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: '🎮', duration: 2500 });
     })();
   }, [roomId, router, setStatus]);
+  useEffect(() => {
+    (window as GamePresenceWindow).__XO_GAME_VISIBILITY_OVERRIDE__ = Boolean(meId && room?.status === 'ongoing');
+    return () => {
+      (window as GamePresenceWindow).__XO_GAME_VISIBILITY_OVERRIDE__ = false;
+    };
+  }, [meId, room?.status]);
+  useEffect(() => {
+    const clearHiddenTimeout = () => {
+      if (!hiddenOfflineTimeoutRef.current) return;
+      clearTimeout(hiddenOfflineTimeoutRef.current);
+      hiddenOfflineTimeoutRef.current = null;
+    };
+    if (!meId || room?.status !== 'ongoing') {
+      clearHiddenTimeout();
+      hiddenStartedAtRef.current = null;
+      setIsVisibilityPaused(false);
+      setConnectionStatusRef.current('connected');
+      return;
+    }
+    let active = true;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenStartedAtRef.current = Date.now();
+        setIsVisibilityPaused(true);
+        setConnectionStatusRef.current('reconnecting');
+        showToastRef.current({
+          type: 'warning',
+          title: 'Opponent Connection Lost',
+          message: 'Background detected. Return within 20 seconds to remain in game.',
+          duration: 4000,
+        });
+        clearHiddenTimeout();
+        hiddenOfflineTimeoutRef.current = setTimeout(() => {
+          if (!active) return;
+          if (document.visibilityState !== 'hidden') return;
+          void setStatus('offline');
+        }, 20000);
+        return;
+      }
+      clearHiddenTimeout();
+      setIsVisibilityPaused(false);
+      setConnectionStatusRef.current('connected');
+      setTurnTimerKey((k) => k + 1);
+      const hiddenStartedAt = hiddenStartedAtRef.current;
+      hiddenStartedAtRef.current = null;
+      void setStatus('in_game');
+      if (hiddenStartedAt) {
+        const hiddenSeconds = Math.max(1, Math.floor((Date.now() - hiddenStartedAt) / 1000));
+        showToastRef.current({
+          type: 'info',
+          title: 'Connection Restored',
+          message: `You returned after ${hiddenSeconds}s.`,
+          duration: 3000,
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      active = false;
+      clearHiddenTimeout();
+      hiddenStartedAtRef.current = null;
+      setIsVisibilityPaused(false);
+      setConnectionStatusRef.current('connected');
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [meId, room?.status, setStatus]);
 
   /* ── Realtime channel ──────────────────────────── */
   useEffect(() => {
@@ -1021,35 +1108,39 @@ export default function GameRoom() {
               {/* Game HUD - Turn counter & Shuffle countdown */}
               <GameHUD turnCount={turnCount} nextShuffleAt={effectiveNextShuffleAt} activeCurse={isMyTurn ? myCurse : null} />
 
-              {/* Timer */}
-              <div style={{ marginBottom: '2px' }}>
-                <Timer
-                  key={turnTimerKey}
-                  seconds={getTimerSeconds(turnCurse)}
-                  startedAt={room.last_move_at}
-                  onExpire={onExpire}
-                  onWarning={onTimerWarning}
-                  run={room.status === 'ongoing'}
-                />
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: '10px',
-                  marginBottom: '6px',
-                  fontFamily: 'var(--font-heading)',
-                  fontSize: '0.75rem',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
-                  You timeout: {myTimeouts}/2
-                </span>
-                <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
-                  {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
-                </span>
-              </div>
+              {!isMobile && (
+                <>
+                  {/* Timer */}
+                  <div style={{ marginBottom: '2px' }}>
+                    <Timer
+                      key={turnTimerKey}
+                      seconds={getTimerSeconds(turnCurse)}
+                      startedAt={room.last_move_at}
+                      onExpire={onExpire}
+                      onWarning={onTimerWarning}
+                      run={room.status === 'ongoing' && !isVisibilityPaused}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      marginBottom: '6px',
+                      fontFamily: 'var(--font-heading)',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      You timeout: {myTimeouts}/2
+                    </span>
+                    <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
+                    </span>
+                  </div>
+                </>
+              )}
 
               {fumbleWarning && (
                 <div className="animate-fumble-shake" style={{ textAlign: 'center', color: '#ef4444', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem' }}>
@@ -1092,6 +1183,38 @@ export default function GameRoom() {
 
             {/* Board */}
             <section className="game-board-wrap">
+              {isMobile && (
+                <div className="game-timer-mobile">
+                  <div style={{ marginBottom: '2px' }}>
+                    <Timer
+                      key={turnTimerKey}
+                      seconds={getTimerSeconds(turnCurse)}
+                      startedAt={room.last_move_at}
+                      onExpire={onExpire}
+                      onWarning={onTimerWarning}
+                      run={room.status === 'ongoing' && !isVisibilityPaused}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      marginBottom: '6px',
+                      fontFamily: 'var(--font-heading)',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      You timeout: {myTimeouts}/2
+                    </span>
+                    <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className={fumbleWarning ? 'animate-fumble-shake' : ''} style={{ display: 'flex', justifyContent: 'center' }}>
                 <Board
                   board={board as any}
@@ -1330,5 +1453,3 @@ export default function GameRoom() {
     </>
   );
 }
-
-

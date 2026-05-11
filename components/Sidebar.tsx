@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { UserStatus } from "../lib/statusUtils";
 import UserStatusBadge from "./ui/UserStatusBadge";
 
@@ -48,8 +48,13 @@ export default function Sidebar({
   userStatus,
   onToggleStatus,
 }: SidebarProps) {
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const playItems = NAV_ITEMS.filter((item) => item.section === "play");
   const socialItems = NAV_ITEMS.filter((item) => item.section === "social");
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarUrl]);
 
   return (
     <aside className="sb-root">
@@ -97,12 +102,30 @@ export default function Sidebar({
             </button>
           ))}
         </section>
+
+        <button
+          className="sb-mobile-signout"
+          onClick={onSignOut}
+          title="Sign Out"
+          aria-label="Sign Out"
+        >
+          <span className="sb-mobile-signout-icon">{"\u{1F6AA}"}</span>
+        </button>
       </nav>
 
       <div className="sb-bottom">
         <button className="sb-profile" onClick={onOpenProfile} title="Open profile">
           <div className="sb-profile-avatar">
-            {avatarUrl ? <img src={avatarUrl} alt={username} /> : <span>{getInitials(username)}</span>}
+            {avatarUrl && !avatarFailed ? (
+              <img
+                src={avatarUrl}
+                alt={username}
+                referrerPolicy="no-referrer"
+                onError={() => setAvatarFailed(true)}
+              />
+            ) : (
+              <span>{getInitials(username)}</span>
+            )}
           </div>
           <div className="sb-profile-meta">
             <span className="sb-profile-label">Profile</span>
@@ -396,6 +419,20 @@ export default function Sidebar({
           font-size: 0.95rem;
         }
 
+        .sb-mobile-signout {
+          display: none;
+          border: 1px solid rgba(248, 113, 113, 0.35);
+          background: rgba(248, 113, 113, 0.12);
+          color: #fca5a5;
+          cursor: pointer;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .sb-mobile-signout-icon {
+          font-size: 1rem;
+          line-height: 1;
+        }
+
         @media (max-width: 1024px) {
           .sb-root {
             width: 48px;
@@ -495,6 +532,21 @@ export default function Sidebar({
             border-left-color: rgba(255, 255, 255, 0.08);
             border-bottom-color: #7c3aed;
             background: rgba(124, 58, 237, 0.2);
+          }
+
+          .sb-mobile-signout {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+            min-width: 50px;
+            border-bottom: 3px solid transparent;
+            flex-shrink: 0;
+          }
+
+          .sb-mobile-signout:hover {
+            background: rgba(248, 113, 113, 0.2);
+            color: #fecaca;
           }
         }
       `}</style>

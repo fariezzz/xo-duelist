@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const [pendingFriendRequestCount, setPendingFriendRequestCount] = useState(0);
   const [arenaInviteCount, setArenaInviteCount] = useState(0);
   const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
+  const [heroAvatarFailed, setHeroAvatarFailed] = useState(false);
 
   // Invite from dashboard
   const [invitingFriendId, setInvitingFriendId] = useState<string | null>(null);
@@ -141,6 +142,10 @@ export default function DashboardPage() {
     oppElo: number;
   } | null>(null);
   const [playMatchFound] = useSound("/sounds/match-found.mp3", { volume: 0.7 });
+
+  useEffect(() => {
+    setHeroAvatarFailed(false);
+  }, [profile?.avatar_url]);
 
   const totalMatches = useMemo(() => {
     if (!profile) return 0;
@@ -728,8 +733,13 @@ export default function DashboardPage() {
             <div className="hero-left">
               <button className="hero-avatar-btn" onClick={goToProfile} title="Go to profile">
                 <div className="hero-avatar">
-                  {profile.avatar_url ? (
-                    <img src={profile.avatar_url} alt={profile.username} />
+                  {profile.avatar_url && !heroAvatarFailed ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt={profile.username}
+                      referrerPolicy="no-referrer"
+                      onError={() => setHeroAvatarFailed(true)}
+                    />
                   ) : (
                     <span>{userInitials}</span>
                   )}
