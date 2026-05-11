@@ -1295,7 +1295,7 @@ export default function GameRoom() {
       />
       
       {!room?.is_vs_ai && (
-        <div style={{ position: 'fixed', bottom: '20px', left: '20px', zIndex: 50, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ position: 'fixed', bottom: '12px', left: '20px', zIndex: 50, display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <VoiceChat
             roomId={roomId}
             meId={meId!}
