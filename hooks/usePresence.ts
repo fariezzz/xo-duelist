@@ -139,12 +139,16 @@ export function subscribePresenceState(listener: PresenceListener): () => void {
 function sendOfflineBeacon(userId: string) {
   // Strategy 1: Direct Supabase update — works when JS is still running
   // (e.g., from visibilitychange hidden timeout). Fire-and-forget.
-  void supabaseClient
-    .from("profiles")
-    .update({ status: "offline", last_seen: new Date().toISOString() })
-    .eq("id", userId)
-    .then(() => {})
-    .catch(() => {});
+  void (async () => {
+    try {
+      await supabaseClient
+        .from("profiles")
+        .update({ status: "offline", last_seen: new Date().toISOString() })
+        .eq("id", userId);
+    } catch {
+      // ignore — best-effort
+    }
+  })();
 
   // Strategy 2: sendBeacon — works during page unload/pagehide
   // when normal fetch would be cancelled by the browser
