@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, type Dispatch, type SetStateAction, useEffect, useRef, useState, useCallback } from 'react';
+import { type ChangeEvent, type Dispatch, type SetStateAction, useEffect, useId, useRef, useState, useCallback } from 'react';
 import { AlertCircle, Keyboard, LogOut, Mic, MicOff, Phone, PhoneCall, PhoneOff, Settings, SignalHigh, SignalLow, SignalMedium, SignalZero, Volume2, VolumeX, X } from 'lucide-react';
 import { supabaseClient } from '../lib/supabase';
 
@@ -40,6 +40,7 @@ type VoiceStatus =
   | 'Voice Off'
   | 'Requesting Mic...'
   | 'Connecting...'
+  | 'Reconnecting...'
   | 'Connected'
   | 'Mic Muted'
   | 'Deafened'
@@ -47,6 +48,8 @@ type VoiceStatus =
   | 'Mic Permission Denied'
   | 'Voice Error'
   | 'NS Error';
+
+type VoiceSignalKind = 'offer' | 'answer' | 'ice-candidate';
 
 interface VoiceChatProps {
   roomId: string;
@@ -61,11 +64,19 @@ interface VoiceChatProps {
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }, // tambahkan backup STUN
 ];
+
+const RECONNECT_GRACE_MS = 4000;
+const RECONNECT_CLEANUP_MS = 5000;
+const CONNECT_TIMEOUT_MS = 15000;
 
 if (process.env.NEXT_PUBLIC_TURN_URL) {
   ICE_SERVERS.push({
-    urls: process.env.NEXT_PUBLIC_TURN_URL,
+    urls: [
+      process.env.NEXT_PUBLIC_TURN_URL,
+      process.env.NEXT_PUBLIC_TURN_URL.replace('443', '80'), // fallback
+    ],
     username: process.env.NEXT_PUBLIC_TURN_USERNAME || '',
     credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL || '',
   });
@@ -74,6 +85,7 @@ if (process.env.NEXT_PUBLIC_TURN_URL) {
 // Global state to persist connection across page navigation (Lobby -> Game)
 const globalVoiceState = {
   roomId: null as string | null,
+  meId: null as string | null,
   status: 'Voice Off' as VoiceStatus,
   isMuted: false,
   isDeafened: false,
@@ -82,6 +94,8 @@ const globalVoiceState = {
   remoteStream: null as MediaStream | null,
   pc: null as RTCPeerConnection | null,
   channel: null as VoiceChannel | null,
+  presenceChannel: null as VoiceChannel | null,
+  pendingIceCandidates: [] as RTCIceCandidateInit[],
   joined: false,
   makingOffer: false,
   processingOffer: false,
@@ -109,13 +123,104 @@ const globalVoiceState = {
 };
 
 type GlobalVoiceState = typeof globalVoiceState;
+type VoiceInstanceRegistration = {
+  setVoiceState: Dispatch<SetStateAction<GlobalVoiceState>>;
+  setIsActive: Dispatch<SetStateAction<boolean>>;
+};
 
 let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let connectTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let activeSetState: Dispatch<SetStateAction<GlobalVoiceState>> | null = null;
+let activeVoiceInstanceId: string | null = null;
+let localVadAnimationFrame: number | null = null;
+let remoteVadAnimationFrame: number | null = null;
+let localVadRunId = 0;
+let remoteVadRunId = 0;
+const voiceInstanceRegistrations = new Map<string, VoiceInstanceRegistration>();
 
 const updateGlobalState = (updates: Partial<typeof globalVoiceState>) => {
   Object.assign(globalVoiceState, updates);
   if (activeSetState) activeSetState({ ...globalVoiceState });
+};
+
+const clearCleanupTimer = () => {
+  if (!cleanupTimer) return;
+  clearTimeout(cleanupTimer);
+  cleanupTimer = null;
+};
+
+const syncVoiceInstanceOwnership = () => {
+  const activeRegistration = activeVoiceInstanceId
+    ? voiceInstanceRegistrations.get(activeVoiceInstanceId)
+    : undefined;
+
+  activeSetState = activeRegistration?.setVoiceState ?? null;
+
+  voiceInstanceRegistrations.forEach((registration, instanceId) => {
+    registration.setIsActive(instanceId === activeVoiceInstanceId);
+  });
+
+  if (activeSetState) activeSetState({ ...globalVoiceState });
+};
+
+const promoteNextVoiceInstance = () => {
+  const instanceIds = Array.from(voiceInstanceRegistrations.keys());
+  activeVoiceInstanceId = instanceIds[instanceIds.length - 1] ?? null;
+  syncVoiceInstanceOwnership();
+};
+
+const clearReconnectTimer = () => {
+  if (!reconnectTimer) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+};
+
+const clearConnectTimeoutTimer = () => {
+  if (!connectTimeoutTimer) return;
+  clearTimeout(connectTimeoutTimer);
+  connectTimeoutTimer = null;
+};
+
+const stopLocalVadLoop = () => {
+  localVadRunId += 1;
+  if (localVadAnimationFrame === null) return;
+
+  cancelAnimationFrame(localVadAnimationFrame);
+  localVadAnimationFrame = null;
+};
+
+const stopRemoteVadLoop = () => {
+  remoteVadRunId += 1;
+  if (remoteVadAnimationFrame === null) return;
+
+  cancelAnimationFrame(remoteVadAnimationFrame);
+  remoteVadAnimationFrame = null;
+};
+
+const stopVadLoops = () => {
+  stopLocalVadLoop();
+  stopRemoteVadLoop();
+};
+
+const scheduleConnectTimeout = (pc: RTCPeerConnection) => {
+  clearConnectTimeoutTimer();
+
+  connectTimeoutTimer = setTimeout(() => {
+    connectTimeoutTimer = null;
+
+    if (pc.connectionState === 'connected' || pc.connectionState === 'closed') return;
+    if (!globalVoiceState.hasJoined) return;
+    if (globalVoiceState.status !== 'Connecting...' && globalVoiceState.status !== 'Reconnecting...') return;
+
+    performHardCleanup('Voice Error');
+  }, CONNECT_TIMEOUT_MS);
+};
+
+const getConnectedVoiceStatus = (): VoiceStatus => {
+  if (globalVoiceState.isDeafened) return 'Deafened';
+  if (globalVoiceState.isMuted) return 'Mic Muted';
+  return 'Connected';
 };
 
 const getMicEnabled = () => (
@@ -164,6 +269,32 @@ const syncActiveVoiceSender = async (useCleanVoice = globalVoiceState.isAdvanced
   }
 
   pc.addTrack(activeTrack, activeStream);
+};
+
+const flushPendingIceCandidates = async (pc: RTCPeerConnection) => {
+  if (!pc.remoteDescription || globalVoiceState.pendingIceCandidates.length === 0) return;
+
+  const pendingCandidates = [...globalVoiceState.pendingIceCandidates];
+  updateGlobalState({ pendingIceCandidates: [] });
+
+  for (const candidate of pendingCandidates) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.error('Error adding queued ICE candidate:', err);
+    }
+  }
+};
+
+const queueOrAddIceCandidate = async (pc: RTCPeerConnection, candidate: RTCIceCandidateInit) => {
+  if (!pc.remoteDescription) {
+    updateGlobalState({
+      pendingIceCandidates: [...globalVoiceState.pendingIceCandidates, candidate],
+    });
+    return;
+  }
+
+  await pc.addIceCandidate(new RTCIceCandidate(candidate));
 };
 
 const getMicPermissionHelp = (error: unknown) => {
@@ -218,15 +349,51 @@ const getRoundTripTimeMs = (stats: RTCStatsReport) => {
   return fallbackRtt;
 };
 
+const sendVoicePresenceBroadcast = (
+  event: 'voice-ping' | 'voice-pong' | 'voice-join' | 'voice-leave',
+  extraPayload: Record<string, unknown> = {}
+) => {
+  if (!globalVoiceState.presenceChannel || !globalVoiceState.roomId || !globalVoiceState.meId) return;
+
+  globalVoiceState.presenceChannel.send({
+    type: 'broadcast',
+    event,
+    payload: {
+      roomId: globalVoiceState.roomId,
+      from: globalVoiceState.meId,
+      timestamp: Date.now(),
+      ...extraPayload,
+    },
+  });
+};
+
+const sendVoiceLeaveBroadcast = (reason: VoiceStatus) => {
+  if (!globalVoiceState.joined || !globalVoiceState.roomId || !globalVoiceState.meId) return;
+
+  const payload = {
+    roomId: globalVoiceState.roomId,
+    from: globalVoiceState.meId,
+    reason,
+    timestamp: Date.now(),
+  };
+
+  globalVoiceState.channel?.send({
+    type: 'broadcast',
+    event: 'voice-leave',
+    payload,
+  });
+
+  sendVoicePresenceBroadcast('voice-leave', { reason });
+};
+
 // Hard cleanup function (called when truly leaving, not just navigating quickly)
 const performHardCleanup = (newStatus: VoiceStatus = 'Voice Off') => {
-  if (globalVoiceState.channel && globalVoiceState.joined) {
-    globalVoiceState.channel.send({
-      type: 'broadcast',
-      event: 'voice-leave',
-      payload: { roomId: globalVoiceState.roomId, timestamp: Date.now() }
-    });
-  }
+  clearCleanupTimer();
+  clearReconnectTimer();
+  clearConnectTimeoutTimer();
+  stopVadLoops();
+
+  sendVoiceLeaveBroadcast(newStatus);
 
   if (globalVoiceState.audioContext) {
     const keepAlive = (globalVoiceState.audioContext as AudioContextWithKeepAlive)._keepAlive;
@@ -258,6 +425,7 @@ const performHardCleanup = (newStatus: VoiceStatus = 'Voice Off') => {
     remoteStream: null,
     pc: null,
     channel: null,
+    pendingIceCandidates: [],
     status: newStatus,
     isMuted: false,
     isDeafened: false,
@@ -303,24 +471,153 @@ export default function VoiceChat({
   popoverPosition = 'up',
 }: VoiceChatProps) {
   const [localState, setLocalState] = useState(globalVoiceState);
+  const [isActiveInstance, setIsActiveInstance] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const voiceInstanceId = useId();
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const signalValidationCacheRef = useRef(new Map<string, Promise<boolean>>());
+
+  const validateVoiceSignalRole = useCallback((signal: VoiceSignalKind, from?: string | null, to?: string | null) => {
+    if (!from || !to || !roomId || !player1Id || !opponentId) return false;
+
+    const player2Id = player1Id === meId ? opponentId : meId;
+    const fromPlayer1 = from === player1Id && to === player2Id;
+    const fromPlayer2 = from === player2Id && to === player1Id;
+    const isBetweenPlayers = fromPlayer1 || fromPlayer2;
+    if (!isBetweenPlayers) return false;
+
+    if (signal === 'offer') return fromPlayer1;
+    if (signal === 'answer') return fromPlayer2;
+    return true;
+  }, [meId, opponentId, player1Id, roomId]);
+
+  const validateVoiceSignal = useCallback((signal: VoiceSignalKind, from?: string | null, to?: string | null) => {
+    if (!from || !to || !roomId) return Promise.resolve(false);
+    if (from !== meId || to !== opponentId) return Promise.resolve(false);
+
+    const validateLocallyForDev = () => {
+      if (process.env.NODE_ENV === 'production') return false;
+      return validateVoiceSignalRole(signal, from, to);
+    };
+
+    if (!validateVoiceSignalRole(signal, from, to)) return Promise.resolve(false);
+
+    const cacheKey = `${roomId}:${signal}:${from}:${to}`;
+    const cached = signalValidationCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+
+    const validateViaApi = async () => {
+      try {
+        const { data: sessionData } = await supabaseClient.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        if (!accessToken) return false;
+
+        const response = await fetch('/api/voice/validate-signal', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            roomId,
+            from,
+            to,
+            signal,
+          }),
+        });
+
+        if (!response.ok) {
+          console.error('Voice signal API validation failed:', response.status);
+          return validateLocallyForDev();
+        }
+
+        const result = await response.json() as { valid?: boolean };
+        return result.valid === true;
+      } catch (err) {
+        console.error('Voice signal API validation failed:', err);
+        return validateLocallyForDev();
+      }
+    };
+
+    const validation = Promise.resolve(supabaseClient.rpc('validate_voice_signal', {
+        input_room_id: roomId,
+        input_from: from,
+        input_to: to,
+        input_signal: signal,
+      }))
+      .then(async ({ data, error }) => {
+        if (data === true) return true;
+
+        const localDevValid = validateLocallyForDev();
+        if (localDevValid) return true;
+
+        if (error) {
+          console.error('Voice signal validation failed:', error);
+          signalValidationCacheRef.current.delete(cacheKey);
+        }
+
+        const apiValid = await validateViaApi();
+        if (!apiValid) signalValidationCacheRef.current.delete(cacheKey);
+        return apiValid;
+      })
+      .catch(async (err) => {
+        console.error('Voice signal validation failed:', err);
+        const apiValid = await validateViaApi();
+        if (!apiValid) signalValidationCacheRef.current.delete(cacheKey);
+        return apiValid;
+      });
+
+    signalValidationCacheRef.current.set(cacheKey, validation);
+    return validation;
+  }, [meId, opponentId, roomId, validateVoiceSignalRole]);
+
+  const validateIncomingVoiceSignal = useCallback((signal: VoiceSignalKind, from?: string | null, to?: string | null) => {
+    if (from !== opponentId || to !== meId) return false;
+    return validateVoiceSignalRole(signal, from, to);
+  }, [meId, opponentId, validateVoiceSignalRole]);
+
+  useEffect(() => {
+    signalValidationCacheRef.current.clear();
+  }, [roomId]);
+
+  useEffect(() => {
+    voiceInstanceRegistrations.set(voiceInstanceId, {
+      setVoiceState: setLocalState,
+      setIsActive: setIsActiveInstance,
+    });
+
+    if (!activeVoiceInstanceId || !voiceInstanceRegistrations.has(activeVoiceInstanceId)) {
+      activeVoiceInstanceId = voiceInstanceId;
+    }
+
+    syncVoiceInstanceOwnership();
+
+    return () => {
+      const wasActive = activeVoiceInstanceId === voiceInstanceId;
+      voiceInstanceRegistrations.delete(voiceInstanceId);
+
+      if (wasActive) {
+        promoteNextVoiceInstance();
+      } else {
+        syncVoiceInstanceOwnership();
+      }
+    };
+  }, [voiceInstanceId]);
 
   // Re-bind WebRTC event handlers to point to current room's logic
   // and manage component lifecycle
   useEffect(() => {
-    activeSetState = setLocalState;
+    if (!isActiveInstance) return;
+
+    updateGlobalState({ meId });
 
     if (globalVoiceState.roomId !== roomId) {
       // Different room (or first load), ensure cleanup of any old room
       performHardCleanup();
-      updateGlobalState({ roomId });
+      updateGlobalState({ roomId, meId });
     } else {
       // Same room! We are probably navigating Lobby -> Game. Cancel cleanup!
-      if (cleanupTimer) {
-        clearTimeout(cleanupTimer);
-        cleanupTimer = null;
-      }
+      clearCleanupTimer();
 
       // Re-attach audio streams
       if (remoteAudioRef.current && globalVoiceState.remoteStream) {
@@ -367,58 +664,68 @@ export default function VoiceChat({
     window.addEventListener('keyup', handleKeyUp, true);
 
     return () => {
-      activeSetState = null;
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
 
-      // When unmounting (e.g. user leaves page), wait 1000ms.
-      // If they land on Game page, the new component mounts and clears this timer.
-      // Otherwise, the hard cleanup runs and terminates the call.
+      // When unmounting (e.g. user leaves page), wait briefly.
+      // If another VoiceChat instance takes over, it keeps the singleton alive.
+      const cleanupRoomId = roomId;
+      const cleanupInstanceId = voiceInstanceId;
+      clearCleanupTimer();
       cleanupTimer = setTimeout(() => {
+        cleanupTimer = null;
+        const hasAnotherActiveOwner = (
+          activeVoiceInstanceId !== null &&
+          activeVoiceInstanceId !== cleanupInstanceId &&
+          voiceInstanceRegistrations.has(activeVoiceInstanceId)
+        );
+
+        if (hasAnotherActiveOwner || globalVoiceState.roomId !== cleanupRoomId) return;
+
         performHardCleanup();
       }, 1000);
     };
-  }, [roomId]);
+  }, [isActiveInstance, roomId, meId, voiceInstanceId]);
 
   // Dedicated presence channel to avoid conflicts with WebRTC signaling
   useEffect(() => {
-    if (!roomId || !opponentId) return;
+    if (!isActiveInstance || !roomId || !opponentId) return;
 
     const presenceChannel = supabaseClient.channel(`voice-presence:${roomId}`);
+    updateGlobalState({ presenceChannel });
 
     presenceChannel
       .on('broadcast', { event: 'voice-ping' }, ({ payload }) => {
+        if (payload.roomId && payload.roomId !== roomId) return;
         if (payload.from === opponentId && globalVoiceState.joined) {
-          presenceChannel.send({
-            type: 'broadcast',
-            event: 'voice-pong',
-            payload: { from: meId }
-          });
+          sendVoicePresenceBroadcast('voice-pong');
         }
       })
       .on('broadcast', { event: 'voice-pong' }, ({ payload }) => {
+        if (payload.roomId && payload.roomId !== roomId) return;
         if (payload.from === opponentId) updateGlobalState({ isOpponentInVoice: true });
       })
       .on('broadcast', { event: 'voice-join' }, ({ payload }) => {
+        if (payload.roomId && payload.roomId !== roomId) return;
         if (payload.from === opponentId) updateGlobalState({ isOpponentInVoice: true });
       })
       .on('broadcast', { event: 'voice-leave' }, ({ payload }) => {
+        if (payload.roomId && payload.roomId !== roomId) return;
         if (payload.from === opponentId) updateGlobalState({ isOpponentInVoice: false });
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          presenceChannel.send({
-            type: 'broadcast',
-            event: 'voice-ping',
-            payload: { from: meId }
-          });
+          sendVoicePresenceBroadcast('voice-ping');
         }
       });
 
     return () => {
+      if (globalVoiceState.presenceChannel === presenceChannel) {
+        updateGlobalState({ presenceChannel: null });
+      }
       supabaseClient.removeChannel(presenceChannel);
     };
-  }, [roomId, opponentId, meId]);
+  }, [isActiveInstance, roomId, opponentId, meId]);
 
   // Sync remote playback settings
   useEffect(() => {
@@ -441,8 +748,11 @@ export default function VoiceChat({
 
     updateGlobalState({ pc });
 
-    pc.onicecandidate = (event) => {
+    pc.onicecandidate = async (event) => {
       if (event.candidate && globalVoiceState.channel) {
+        const canSendCandidate = await validateVoiceSignal('ice-candidate', meId, opponentId);
+        if (!canSendCandidate) return;
+
         globalVoiceState.channel.send({
           type: 'broadcast',
           event: 'voice-ice-candidate',
@@ -459,36 +769,106 @@ export default function VoiceChat({
 
     let statsInterval: NodeJS.Timeout | null = null;
 
+    const startConnectionStats = () => {
+      if (statsInterval) clearInterval(statsInterval);
+
+      statsInterval = setInterval(async () => {
+         if (pc.connectionState !== 'connected') {
+            if (statsInterval) clearInterval(statsInterval);
+            statsInterval = null;
+            return;
+         }
+         try {
+            const stats = await pc.getStats();
+            const rtt = getRoundTripTimeMs(stats);
+            if (rtt !== null) {
+                let quality: GlobalVoiceState['connectionQuality'] = 'Excellent';
+                if (rtt > 250) quality = 'Poor';
+                else if (rtt > 100) quality = 'Good';
+
+                updateGlobalState({
+                    ping: Math.round(rtt),
+                    connectionQuality: quality
+                });
+            }
+         } catch(err) {
+             console.error("Error occurred while fetching stats:", err);
+         }
+      }, 2000);
+    };
+
+    const sendReconnectOffer = async () => {
+      if (!globalVoiceState.channel || globalVoiceState.makingOffer || pc.signalingState !== 'stable') return;
+
+      try {
+        updateGlobalState({ makingOffer: true });
+
+        const canSendOffer = await validateVoiceSignal('offer', meId, opponentId);
+        if (!canSendOffer) return;
+
+        updateGlobalState({ status: 'Reconnecting...' });
+        pc.restartIce();
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+
+        globalVoiceState.channel.send({
+          type: 'broadcast',
+          event: 'voice-offer',
+          payload: {
+            roomId,
+            from: meId,
+            to: opponentId,
+            offer: pc.localDescription,
+            timestamp: Date.now(),
+          }
+        });
+      } catch (err) {
+        console.error('Error creating reconnect offer:', err);
+      } finally {
+        updateGlobalState({ makingOffer: false });
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (reconnectTimer || !globalVoiceState.hasJoined) return;
+
+      updateGlobalState({
+        status: 'Reconnecting...',
+        connectionQuality: 'Poor',
+      });
+      scheduleConnectTimeout(pc);
+
+      reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null;
+        if (pc.connectionState === 'connected' || pc.connectionState === 'closed') return;
+
+        if (meId === player1Id) {
+          await sendReconnectOffer();
+        }
+
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          if (pc.connectionState === 'connected' || pc.connectionState === 'closed') return;
+          performHardCleanup('Opponent Left');
+        }, RECONNECT_CLEANUP_MS);
+      }, RECONNECT_GRACE_MS);
+    };
+
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
-        updateGlobalState({ status: globalVoiceState.isMuted ? 'Mic Muted' : 'Connected' });
-
-        statsInterval = setInterval(async () => {
-           if (pc.connectionState !== 'connected') {
-              if (statsInterval) clearInterval(statsInterval);
-              return;
-           }
-           try {
-              const stats = await pc.getStats();
-              const rtt = getRoundTripTimeMs(stats);
-              if (rtt !== null) {
-                  let quality: GlobalVoiceState['connectionQuality'] = 'Excellent';
-                  if (rtt > 250) quality = 'Poor';
-                  else if (rtt > 100) quality = 'Good';
-
-                  updateGlobalState({
-                      ping: Math.round(rtt),
-                      connectionQuality: quality
-                  });
-              }
-           } catch(err) {
-               console.error("Error occurred while fetching stats:", err);
-           }
-        }, 2000);
-
-      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        clearReconnectTimer();
+        clearConnectTimeoutTimer();
+        updateGlobalState({ status: getConnectedVoiceStatus() });
+        startConnectionStats();
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         if (statsInterval) clearInterval(statsInterval);
-        performHardCleanup('Opponent Left');
+        statsInterval = null;
+        scheduleReconnect();
+      } else if (pc.connectionState === 'closed') {
+        if (statsInterval) clearInterval(statsInterval);
+        statsInterval = null;
+        clearReconnectTimer();
+        clearConnectTimeoutTimer();
       }
     };
 
@@ -501,9 +881,12 @@ export default function VoiceChat({
         remoteAudioRef.current.volume = globalVoiceState.remoteVolume;
       }
 
+      stopRemoteVadLoop();
+
       // Setup Remote VAD
       if (globalVoiceState.audioContext && globalVoiceState.audioContext.state !== 'closed') {
         try {
+           const currentRemoteVadRunId = remoteVadRunId;
            const remoteSource = globalVoiceState.audioContext.createMediaStreamSource(stream);
            const remoteAnalyser = globalVoiceState.audioContext.createAnalyser();
            remoteSource.connect(remoteAnalyser);
@@ -512,7 +895,10 @@ export default function VoiceChat({
            let remoteSilenceFrames = 12;
 
            const processRemoteAudio = () => {
+             if (currentRemoteVadRunId !== remoteVadRunId) return;
+
              if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+               remoteVadAnimationFrame = null;
                if (globalVoiceState.isRemoteSpeaking) {
                  updateGlobalState({ isRemoteSpeaking: false });
                }
@@ -537,9 +923,9 @@ export default function VoiceChat({
                  updateGlobalState({ isRemoteSpeaking: remoteActive });
              }
 
-             requestAnimationFrame(processRemoteAudio);
+             remoteVadAnimationFrame = requestAnimationFrame(processRemoteAudio);
            };
-           processRemoteAudio();
+           remoteVadAnimationFrame = requestAnimationFrame(processRemoteAudio);
         } catch(err) { console.error("Remote VAD setup failed", err); }
       }
     };
@@ -549,7 +935,7 @@ export default function VoiceChat({
     });
 
     return pc;
-  }, [roomId, meId, opponentId]);
+  }, [roomId, meId, opponentId, player1Id, validateVoiceSignal]);
 
   const requestMicrophone = async () => {
     try {
@@ -667,8 +1053,18 @@ export default function VoiceChat({
           return total / (endBin - startBin + 1);
         };
 
+        stopLocalVadLoop();
+        const currentLocalVadRunId = localVadRunId;
+
         const processAudio = () => {
-          if (!audioContext || audioContext.state === 'closed') return;
+          if (currentLocalVadRunId !== localVadRunId) return;
+          if (!audioContext || audioContext.state === 'closed') {
+            localVadAnimationFrame = null;
+            if (globalVoiceState.isLocalSpeaking) {
+              updateGlobalState({ isLocalSpeaking: false });
+            }
+            return;
+          }
 
           analyser.getFloatTimeDomainData(dataArray);
           analyser.getByteFrequencyData(frequencyData);
@@ -832,10 +1228,10 @@ export default function VoiceChat({
              updateGlobalState({ isLocalSpeaking: isSpeaking });
           }
 
-          requestAnimationFrame(processAudio);
+          localVadAnimationFrame = requestAnimationFrame(processAudio);
         };
 
-        processAudio();
+        localVadAnimationFrame = requestAnimationFrame(processAudio);
       } catch(err) {
         console.error("Advanced audio cleanup failed, using raw stream:", err);
       }
@@ -853,6 +1249,10 @@ export default function VoiceChat({
     if (pc.signalingState !== 'stable' || globalVoiceState.makingOffer) return;
     try {
       updateGlobalState({ makingOffer: true });
+
+      const canSendOffer = await validateVoiceSignal('offer', meId, opponentId);
+      if (!canSendOffer) return;
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
@@ -879,7 +1279,7 @@ export default function VoiceChat({
   const handleJoinVoice = async () => {
     if (disabled || !opponentId) return;
 
-    updateGlobalState({ roomId, status: 'Requesting Mic...', micPermissionHelp: null });
+    updateGlobalState({ roomId, meId, status: 'Requesting Mic...', micPermissionHelp: null });
 
     const hasMic = await requestMicrophone();
     if (!hasMic) return;
@@ -887,13 +1287,10 @@ export default function VoiceChat({
     updateGlobalState({ status: 'Connecting...', hasJoined: true, joined: true });
 
     const pc = initWebRTC();
+    scheduleConnectTimeout(pc);
 
     // Broadcast join on presence channel so the opponent (if waiting) knows we joined
-    supabaseClient.channel(`voice-presence:${roomId}`).send({
-      type: 'broadcast',
-      event: 'voice-join',
-      payload: { from: meId }
-    });
+    sendVoicePresenceBroadcast('voice-join');
 
     // Setup signaling channel
     const channelName = `voice:${roomId}`;
@@ -906,6 +1303,9 @@ export default function VoiceChat({
         // If I am player 1, I should initiate the offer when the other person joins
         if (meId === player1Id) {
           if (pc.signalingState === 'have-local-offer' && pc.localDescription) {
+            const canSendOffer = await validateVoiceSignal('offer', meId, opponentId);
+            if (!canSendOffer) return;
+
             channel.send({
               type: 'broadcast',
               event: 'voice-offer',
@@ -928,6 +1328,10 @@ export default function VoiceChat({
 
         try {
           updateGlobalState({ processingOffer: true });
+
+          const isValidOffer = validateIncomingVoiceSignal('offer', payload.from, payload.to);
+          if (!isValidOffer) return;
+
           if (!globalVoiceState.localStream && globalVoiceState.joined) {
              await requestMicrophone();
              await syncActiveVoiceSender();
@@ -938,8 +1342,12 @@ export default function VoiceChat({
           }
 
           await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+          await flushPendingIceCandidates(pc);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
+
+          const canSendAnswer = await validateVoiceSignal('answer', meId, opponentId);
+          if (!canSendAnswer) return;
 
           channel.send({
             type: 'broadcast',
@@ -963,7 +1371,12 @@ export default function VoiceChat({
         if (globalVoiceState.processingAnswer || pc.signalingState !== 'have-local-offer') return;
         try {
           updateGlobalState({ processingAnswer: true });
+
+          const isValidAnswer = validateIncomingVoiceSignal('answer', payload.from, payload.to);
+          if (!isValidAnswer) return;
+
           await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          await flushPendingIceCandidates(pc);
         } catch (err) {
           console.error('Error handling answer:', err);
         } finally {
@@ -973,8 +1386,11 @@ export default function VoiceChat({
       .on('broadcast', { event: 'voice-ice-candidate' }, async ({ payload }) => {
         if (payload.from === meId || payload.to !== meId || payload.roomId !== roomId) return;
         try {
+          const isValidCandidate = validateIncomingVoiceSignal('ice-candidate', payload.from, payload.to);
+          if (!isValidCandidate) return;
+
           if (payload.candidate) {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            await queueOrAddIceCandidate(pc, payload.candidate);
           }
         } catch (err) {
           console.error('Error adding ICE candidate:', err);
@@ -1104,13 +1520,18 @@ export default function VoiceChat({
 
   const handleLeaveVoice = () => {
     setIsSettingsOpen(false);
-    supabaseClient.channel(`voice-presence:${roomId}`).send({
-      type: 'broadcast',
-      event: 'voice-leave',
-      payload: { from: meId }
-    });
     performHardCleanup();
   };
+
+  const shouldRenderThisInstance = (
+    isActiveInstance ||
+    activeVoiceInstanceId === null ||
+    activeVoiceInstanceId === voiceInstanceId
+  );
+
+  if (!shouldRenderThisInstance) {
+    return null;
+  }
 
   if (disabled) {
     return (
@@ -1124,11 +1545,31 @@ export default function VoiceChat({
      return null; // Don't show if opponent is not yet there
   }
 
+  const shouldShowIdleStatus = (
+    localState.status === 'Voice Error' ||
+    localState.status === 'Mic Permission Denied' ||
+    localState.status === 'NS Error' ||
+    localState.status === 'Opponent Left'
+  );
+  const voiceStatusLabel = !localState.hasJoined
+    ? shouldShowIdleStatus
+      ? localState.status
+      : localState.isOpponentInVoice
+        ? 'Opponent is waiting!'
+        : 'Join Voice Chat?'
+    : localState.status;
+  const shouldHideIdleJoinButton = (
+    localState.status === 'Voice Error' ||
+    (!localState.isOpponentInVoice && localState.status === 'Opponent Left')
+  );
+
   const StatusIcon = !localState.hasJoined
-    ? localState.isOpponentInVoice
-      ? PhoneCall
-      : localState.status === 'Opponent Left'
-        ? PhoneOff
+    ? localState.status === 'Opponent Left'
+      ? PhoneOff
+      : shouldShowIdleStatus
+        ? AlertCircle
+      : localState.isOpponentInVoice
+        ? PhoneCall
         : Mic
     : localState.isPushToTalk
       ? Keyboard
@@ -1139,6 +1580,9 @@ export default function VoiceChat({
         : localState.status === 'Deafened'
           ? VolumeX
           : Mic;
+  const statusIconColor = localState.hasJoined && localState.status === 'Connected'
+    ? '#10b981'
+    : undefined;
 
   const remoteVolumePercent = Math.round(localState.remoteVolume * 100);
   const RemoteVolumeIcon = localState.isDeafened || remoteVolumePercent === 0 ? VolumeX : Volume2;
@@ -1217,12 +1661,12 @@ export default function VoiceChat({
               transition: 'all 0.1s ease',
               flexShrink: 0
           }}>
-            <StatusIcon size={18} strokeWidth={2.2} aria-hidden="true" />
+            <StatusIcon size={18} strokeWidth={2.2} color={statusIconColor} aria-hidden="true" />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0px', overflow: 'hidden', flex: '1 1 auto', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, width: '100%' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', flex: '1 1 auto', minWidth: 0, color: (localState.isOpponentInVoice && !localState.hasJoined) ? '#10b981' : localState.status === 'Voice Error' || localState.status === 'Mic Permission Denied' || localState.status === 'NS Error' || localState.status === 'Opponent Left' ? '#ef4444' : 'var(--text)' }}>
-                {!localState.hasJoined ? (localState.isOpponentInVoice ? 'Opponent is waiting!' : localState.status === 'Opponent Left' ? 'Opponent Left' : 'Join Voice Chat?') : localState.status}
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', flex: '1 1 auto', minWidth: 0, color: shouldShowIdleStatus ? '#ef4444' : (localState.isOpponentInVoice && !localState.hasJoined) ? '#10b981' : 'var(--text)' }}>
+                {voiceStatusLabel}
               </span>
             </div>
             {localState.hasJoined && (
@@ -1241,7 +1685,7 @@ export default function VoiceChat({
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
           {!localState.hasJoined ? (
-            (!localState.isOpponentInVoice && localState.status === 'Opponent Left') ? null : (
+            shouldHideIdleJoinButton ? null : (
               <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.8rem', borderRadius: '16px', ...(localState.isOpponentInVoice ? { boxShadow: '0 0 12px rgba(16,185,129,0.4)', backgroundColor: '#10b981', borderColor: '#10b981', color: 'white' } : {}) }} onClick={handleJoinVoice}>
                 {localState.isOpponentInVoice ? 'Connect' : 'Join'}
               </button>
