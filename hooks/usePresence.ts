@@ -137,6 +137,17 @@ export function subscribePresenceState(listener: PresenceListener): () => void {
  * We send as plain text and the edge function parses it with JSON.parse().
  */
 function sendOfflineBeacon(userId: string) {
+  // Strategy 1: Direct Supabase update — works when JS is still running
+  // (e.g., from visibilitychange hidden timeout). Fire-and-forget.
+  void supabaseClient
+    .from("profiles")
+    .update({ status: "offline", last_seen: new Date().toISOString() })
+    .eq("id", userId)
+    .then(() => {})
+    .catch(() => {});
+
+  // Strategy 2: sendBeacon — works during page unload/pagehide
+  // when normal fetch would be cancelled by the browser
   try {
     const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -152,6 +163,7 @@ function sendOfflineBeacon(userId: string) {
     // ignore — best-effort
   }
 }
+
 
 export function usePresence() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -190,34 +202,59 @@ export function usePresence() {
     const unsubscribe = subscribePresenceState(syncOnline);
     void ensurePresenceChannel(userId);
 
-    // ── beforeunload: fire-and-forget offline beacon ──
+    // ── beforeunload + pagehide: fire-and-forget offline beacon ──
+    // Mobile browsers don't reliably fire beforeunload, but DO fire pagehide.
+    // We listen to both for maximum coverage (deduplication is harmless).
     const onBeforeUnload = () => {
       sendOfflineBeacon(userId);
     };
 
-    // ── visibilitychange: only restore online when tab becomes visible ──
-    // We do NOT set offline on "hidden" — that causes constant flickering
-    // when users switch tabs. Offline detection relies on:
-    //   1. beforeunload beacon (tab/browser close)
-    //   2. signOut explicit update
-    //   3. heartbeat staleness (server-side cleanup_stale_presence)
+    const onPageHide = (e: PageTransitionEvent) => {
+      // e.persisted = true means page may be restored from bfcache,
+      // but we still send offline because the user is leaving now.
+      sendOfflineBeacon(userId);
+    };
+
+    // ── visibilitychange: restore online when tab visible,
+    //    send offline beacon after a grace period when hidden ──
+    let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
+    const HIDDEN_GRACE_MS = 10_000; // 10s grace to avoid flicker on quick tab switches
+
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible" && sharedUserId === userId) {
-        // Tab came back from being hidden — refresh online status
-        void supabaseClient
-          .from("profiles")
-          .update({ status: "online", last_seen: new Date().toISOString() })
-          .eq("id", userId);
-        startHeartbeat(userId);
+      if (document.visibilityState === "visible") {
+        // Tab came back — cancel any pending offline and restore online
+        if (hiddenTimer) {
+          clearTimeout(hiddenTimer);
+          hiddenTimer = null;
+        }
+        if (sharedUserId === userId) {
+          void supabaseClient
+            .from("profiles")
+            .update({ status: "online", last_seen: new Date().toISOString() })
+            .eq("id", userId);
+          startHeartbeat(userId);
+        }
+      } else {
+        // Tab went hidden — on mobile this is the primary "app backgrounded" signal.
+        // Set offline after a grace period to avoid flicker on quick tab switches.
+        if (hiddenTimer) clearTimeout(hiddenTimer);
+        hiddenTimer = setTimeout(() => {
+          hiddenTimer = null;
+          stopHeartbeat();
+          sendOfflineBeacon(userId);
+        }, HIDDEN_GRACE_MS);
       }
     };
 
     window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       unsubscribe();
+      if (hiddenTimer) clearTimeout(hiddenTimer);
       window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onPageHide);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       stopHeartbeat();
       destroyPresenceChannel();
@@ -229,6 +266,7 @@ export function usePresence() {
         .eq("id", userId);
     };
   }, [userId]);
+
 
   return useMemo(() => ({ onlineUserIds }), [onlineUserIds]);
 }
