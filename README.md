@@ -1,142 +1,262 @@
 # XO Duelist
 
-Competitive 5x5 Tic Tac Toe with real-time multiplayer, matchmaking, and ELO ranking.
+**Competitive 5×5 Tic Tac Toe** — A real-time multiplayer strategy game with ELO rankings, skill systems, and curse mechanics.
 
-Tech: Next.js 14 (App Router), TypeScript, Tailwind CSS, Supabase (Postgres, Realtime, Auth, Edge Functions), Vercel
+---
 
-## Quick Start — Detailed Setup
+## Tech Stack
 
-### Step 1: Create Supabase Project
-1. Go to https://supabase.com and sign up / log in
-2. Click **"New Project"**
-3. Enter a project name (e.g., "xo-duelist")
-4. Set a strong database password
-5. Choose a region close to you
-6. Click **"Create New Project"** and wait for it to initialize (2-3 minutes)
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript 5 |
+| UI | React 19, Vanilla CSS |
+| Backend | Supabase (PostgreSQL, Auth, Realtime, Edge Functions) |
+| Session | @supabase/ssr |
+| Audio | use-sound |
+| Icons | Lucide React |
+| Font | Rajdhani (Google Fonts) |
 
-### Step 2: Get Supabase Credentials
-Once your project is ready:
-1. Go to **Settings > API** (left sidebar)
-2. Copy the **Project URL** (looks like `https://xxx.supabase.co`)
-3. Copy the **`anon` public key** under "Project API keys"
-4. Copy the **`service_role` secret key** under "Project API keys"
+---
 
-### Step 3: Create `.env.local`
-In your project root, create a file named `.env.local` and paste:
+## Features
 
+- 🎮 **Real-time PvP** via Supabase Realtime
+- 🤖 **VS AI** with multiple difficulty personas
+- 🏋️ **Training Mode** against local AI
+- 🏠 **Lobby System** — create/join rooms via room code
+- ⚡ **Skill System** — BARRIER, OVERWRITE, BOMB
+- 💀 **Curse System** — BLIND, SLOW, FUMBLE
+- 🌀 **Board Shuffle** — every 12 turns
+- 🏆 **ELO Ranking** with tier badges (Bronze → Diamond)
+- 👥 **Friends System** — add, accept, invite to game
+- 🔔 **Notifications** — real-time friend requests & game invites
+- 📊 **Match History** — full game records
+- 👤 **Public Profiles** — view any player's stats
+- 🌐 **OAuth** — Google, GitHub, Discord login
+
+---
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) v18+
+- [npm](https://www.npmjs.com/) v9+
+- A [Supabase](https://supabase.com) project (free tier works)
+
+---
+
+## Local Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/your-username/xo-duelist.git
+cd xo-duelist
 ```
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-paste-here
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-paste-here
-```
 
-Replace with your actual credentials from Step 2.
+### 2. Install dependencies
 
-### Step 4: Enable Email Authentication
-1. In Supabase dashboard, go to **Authentication > Providers**
-2. Make sure **Email** is enabled (toggle "ON")
-3. Go to **Email Templates** and verify the confirmation email looks good
-
-### Step 5: Create Database Tables
-1. In Supabase, go to **SQL Editor**
-2. Click **"New Query"**
-3. Copy and paste the entire contents of `supabase/migrations/001_initial.sql`
-4. Click **"Run"** to create all tables and RLS policies
-
-### Step 6: Enable Realtime
-1. In Supabase, go to **Database > Replication**
-2. Under "Replication" toggle ON for the `game_rooms` table (for real-time game sync)
-3. Optionally enable for `matchmaking_queue` and `profiles`
-
-### Step 7: Run Locally
 ```bash
 npm install
-npx next dev
 ```
 
-Open http://localhost:3000 and **Register** to create your first account!
+### 3. Configure environment variables
 
-## Database Seeding
-
-Want test data? Run the seeder to create 4 test users with sample profiles:
+Copy the example env file and fill in your Supabase credentials:
 
 ```bash
-npm run seed
+cp .env.local.example .env.local
 ```
 
-This will create:
-- **alice@example.com** / password123
-- **bob@example.com** / password123
-- **charlie@example.com** / password123
-- **diana@example.com** / password123
+Edit `.env.local`:
 
-Each with random ELO ratings and win/loss records. You can log in with any of these accounts at http://localhost:3000.
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-public-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
 
-Project structure
+> Find these in: **Supabase Dashboard → Project Settings → API**
 
-- `app/` — Next.js app routes and pages
-- `components/` — React UI components
-- `lib/` — Supabase client and game helpers
-- `supabase/migrations/` — SQL to bootstrap database
+### 4. Run database migrations
 
-Notes & operational details
+Apply all migrations to your Supabase project in order. You can do this via the **Supabase Dashboard → SQL Editor**, or using the Supabase CLI:
 
-- Authentication: register/login using Supabase Auth. On first login the app attempts to create a `profiles` row for the user.
-- Matchmaking: the page `/matchmaking` inserts a row into `matchmaking_queue`. For a production-safe atomic matching flow, replace the client polling with a server-side RPC that performs a transactional match selection (SELECT ... FOR UPDATE SKIP LOCKED) and creates a `game_rooms` row atomically.
-- Lobby rooms: the page `/lobby` lets a player create a room code or join an existing room by code. Hosts wait on `/lobby/[roomId]` and automatically move to `/game/[roomId]` once the second player joins.
-- Game rooms sync: the app listens for `game_rooms` changes via Supabase Realtime channels.
-- ELO recalculation and match history are handled by database RPC/migration logic.
+```bash
+# Using Supabase CLI (recommended)
+supabase db push
 
-Styling & UI
+# Or manually run each file in order via SQL Editor:
+# supabase/migrations/001_initial.sql
+# supabase/migrations/002_lobby_room_code.sql
+# ... (up to 041_voice_signaling_validation.sql)
+```
 
-- Tailwind CSS is used; theme colors follow the requested palette. Add or tune Tailwind config if needed.
+There are **41 migration files** in `supabase/migrations/`. They must be applied in numerical order.
 
-Deployment
+### 5. Deploy Edge Functions
 
-- Deploy the app to Vercel, and set the environment variables in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` (the service role key should be kept secret).
+Two Edge Functions are required:
 
-Security & RLS
+```bash
+supabase functions deploy set-offline
+supabase functions deploy signup-with-rate-limit
+```
 
-- The migration enables Row Level Security and adds basic policies so users can only modify their own queue rows and profiles. Review policies and tighten them for production.
+> The `set-offline` function handles presence beacon when a user closes the browser tab.
 
-Further improvements
+### 6. Configure Supabase Realtime
 
-- Add server-side transactional matchmaking (recommended) as a Postgres function or Edge Function.
-- Harden RLS policies to limit `game_rooms` updates to only valid moves and only allow players to update their games.
-- Add retry/optimistic conflict handling and move validation on server to prevent cheating.
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+In **Supabase Dashboard → Database → Replication**, ensure the following tables have Realtime enabled:
 
-## Getting Started
+- `game_rooms`
+- `profiles`
+- `friend_requests`
+- `game_invites`
+- `voice_signals`
+- `matchmaking_queue`
 
-First, run the development server:
+### 7. Set up Row Level Security (RLS)
+
+After running migrations, apply the RLS fixes:
+
+```sql
+-- Run in Supabase SQL Editor:
+-- Contents of supabase/fix_all_permissions.sql
+```
+
+Or paste the contents of `supabase/fix_all_permissions.sql` directly into the SQL Editor.
+
+### 8. Start the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## OAuth Login Setup
 
-## Learn More
+To enable Google, GitHub, and Discord login, see the detailed guide:
 
-To learn more about Next.js, take a look at the following resources:
+📄 **[OAUTH_SETUP.md](./OAUTH_SETUP.md)**
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
+```
+xo-duelist/
+├── app/                    # Next.js App Router pages
+│   ├── page.tsx            # Landing / login page
+│   ├── dashboard/          # Main dashboard
+│   ├── game/[roomId]/      # Game room (real-time)
+│   ├── matchmaking/        # Ranked matchmaking queue
+│   ├── lobby/              # Lobby browser & room creation
+│   ├── friends/            # Friends management
+│   ├── history/            # Match history
+│   ├── leaderboard/        # ELO leaderboard
+│   ├── profile/            # Own profile
+│   ├── profile/[username]/ # Public player profiles
+│   ├── training/           # VS Local AI (no ELO)
+│   └── auth/               # OAuth callback handler
+├── components/             # Reusable UI components
+├── hooks/                  # Custom React hooks
+│   ├── usePresence.ts      # Real-time online presence
+│   ├── useStatusManager.ts # Player status (in_game, online, etc.)
+│   └── ...
+├── lib/                    # Utilities & game logic
+│   ├── mechanics.ts        # Skills, curses, shuffle, power cells
+│   ├── gameLogic.ts        # Win/draw detection
+│   ├── aiPlayer.ts         # AI move engine
+│   └── supabase.ts         # Supabase client
+├── context/                # React contexts (Notifications)
+├── styles/                 # Global CSS
+├── supabase/
+│   ├── migrations/         # 41 SQL migration files
+│   └── functions/          # Edge Functions
+│       ├── set-offline/
+│       └── signup-with-rate-limit/
+└── public/
+    └── sounds/             # In-game sound effects
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Game Mechanics
+
+### Board
+- **5×5 grid** — 4 in a row wins
+
+### Power Cells (⚡)
+Stepping on a Power Cell grants a random skill:
+| Skill | Effect |
+|---|---|
+| BARRIER 🛡️ | Place a wall that blocks that cell |
+| OVERWRITE ✏️ | Replace any opponent's symbol with yours |
+| BOMB 💣 | Destroy any cell, clearing its content |
+
+### Curse Cells (💀)
+Stepping on a Curse Cell inflicts a random curse:
+| Curse | Effect |
+|---|---|
+| BLIND 🌑 | All board cells appear as `?` |
+| SLOW 🐢 | Timer is reduced for your turns |
+| FUMBLE 🎲 | Your moves are placed on a random empty cell |
+
+### Board Shuffle 🌀
+Every **12 turns**, all pieces on the board are randomly repositioned.
+
+---
+
+## ELO Tiers
+
+| Tier | ELO Range |
+|---|---|
+| 🥉 Bronze | 0 – 799 |
+| 🥈 Silver | 800 – 999 |
+| 🥇 Gold | 1000 – 1199 |
+| 💎 Platinum | 1200 – 1399 |
+| 👑 Diamond | 1400+ |
+
+---
+
+## Environment Variables Reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Public anon key (safe for client) |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service role key (server-only) |
+| `VERCEL_URL` | Optional | Auto-set by Vercel on deployment |
+
+---
+
+## Deployment (Vercel)
+
+1. Push to GitHub
+2. Import the repository in [Vercel](https://vercel.com)
+3. Add all environment variables from `.env.local.example` in the Vercel dashboard
+4. Deploy — Vercel auto-detects Next.js
+
+> Make sure your Supabase **Site URL** and **Redirect URLs** include your Vercel production domain. See [OAUTH_SETUP.md](./OAUTH_SETUP.md) for details.
+
+---
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run seed` | Seed database with test data |
+
+---
+
+## License
+
+Private project — all rights reserved.
