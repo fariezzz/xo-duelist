@@ -50,7 +50,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/xo-duelist.git
+git clone https://github.com/fariezzz/xo-duelist.git
 cd xo-duelist
 ```
 
