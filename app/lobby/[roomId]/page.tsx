@@ -347,7 +347,9 @@ export default function LobbyRoomPage() {
 
         if (updated.status === 'ongoing' && updated.player2_id) {
           disconnect();
-          router.replace(`/game/${updated.id}`);
+          // Clear the intro-seen flag so the cinematic plays on every new match
+          try { sessionStorage.removeItem(`bi-seen-${updated.id}`); } catch { /* ignore */ }
+          router.replace(`/game/${updated.id}?intro=1`);
         }
         if (updated.status === 'cancelled') {
           disconnect();
@@ -406,7 +408,7 @@ export default function LobbyRoomPage() {
       setStartLoading(true);
       const { error } = await supabaseClient.rpc('start_lobby_room', { input_room_id: room.id });
       if (error) throw error;
-      // Game started → redirect handled by realtime UPDATE subscription
+      // Game started → redirect handled by realtime UPDATE subscription (includes ?intro=1)
     } catch (err: any) {
       setError(toLobbyErrorMessage(err, 'Failed to start game'));
     } finally { setStartLoading(false); }

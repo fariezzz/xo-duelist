@@ -1,5 +1,6 @@
 import './globals.css';
 import '../styles/notifications.css';
+import '../styles/battle-intro.css';
 import React from 'react';
 import { Rajdhani } from 'next/font/google';
 import { NotificationProvider } from '../context/NotificationContext';

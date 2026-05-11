@@ -10,6 +10,7 @@ import type { ResultOutcome } from '../../../components/ResultModal';
 import GameBanner from '../../../components/notifications/GameBanner';
 import MatchFoundModal from '../../../components/notifications/MatchFoundModal';
 import RankUpOverlay from '../../../components/notifications/RankUpOverlay';
+import BattleIntroOverlay, { shouldShowBattleIntro } from '../../../components/notifications/BattleIntroOverlay';
 import GameHUD from '../../../components/GameHUD';
 import SkillCard from '../../../components/SkillCard';
 import { useNotification } from '../../../hooks/useNotification';
@@ -45,8 +46,15 @@ export default function GameRoom() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const aiOrigin = searchParams.get('origin'); // 'dashboard' or 'matchmaking'
+  const introRequested = searchParams.get('intro') === '1';
   const { showToast, showBanner, banner } = useNotification();
   const lock = useScopedSessionLock('arena');
+
+  // ── Battle intro overlay ─────────────────────────────
+  const [showIntro, setShowIntro] = useState(false);
+  // hasMountedIntroRef prevents the intro from firing a second time due to
+  // realtime updates while the room.status stays 'ongoing'
+  const hasMountedIntroRef = useRef(false);
 
   // Stable refs for notification functions to avoid re-render loops
   const showToastRef = useRef(showToast);
@@ -107,6 +115,24 @@ export default function GameRoom() {
   } | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isLobbyGameSession, setIsLobbyGameSession] = useState(false);
+
+  // Reset the guard whenever ?intro=1 arrives fresh (same roomId, new match)
+  useEffect(() => {
+    if (introRequested) {
+      hasMountedIntroRef.current = false;
+    }
+  }, [introRequested]);
+
+  // Trigger the intro once when room + profiles are both loaded
+  useEffect(() => {
+    if (hasMountedIntroRef.current) return;
+    if (!room || !playerProfiles) return;
+    if (room.status !== 'ongoing') return;
+    if (!introRequested) return;
+    if (!shouldShowBattleIntro(roomId)) return;
+    hasMountedIntroRef.current = true;
+    setShowIntro(true);
+  }, [room, playerProfiles, introRequested, roomId]);
 
   /* ── Mechanics state ─────────────────────────────── */
   const [skillTargetMode, setSkillTargetMode] = useState(false);
@@ -952,7 +978,7 @@ export default function GameRoom() {
 
   return (
     <>
-      <div className="animate-fade-in game-screen">
+      <div className={`animate-fade-in game-screen${showIntro ? ' bi-game-blurred' : ''}`}>
         <div className="game-shell">
           {/* Game Banner */}
           <GameBanner banner={banner} />
@@ -1236,6 +1262,16 @@ export default function GameRoom() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Battle Intro Overlay — fires once when ?intro=1 is present */}
+      {showIntro && room.status === 'ongoing' && playerProfiles && (
+        <BattleIntroOverlay
+          sessionKey={roomId}
+          playerX={{ name: playerProfiles.p1.username, avatarUrl: playerProfiles.p1.avatarUrl }}
+          playerO={{ name: playerProfiles.p2.username, avatarUrl: playerProfiles.p2.avatarUrl }}
+          onDone={() => setShowIntro(false)}
+        />
       )}
 
       {/* Rank Up Overlay (shows before result) */}
