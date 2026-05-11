@@ -10,8 +10,8 @@ interface Props {
   newElo?: number;
   opponentName?: string;
   onPlayAgain?: () => void;
-  onDashboard?: () => void;
-  dashboardLabel?: string;
+  onHome?: () => void;
+  homeLabel?: string;
   /* Legacy compat — used by training mode */
   title?: string;
   message?: string;
@@ -63,8 +63,8 @@ export default function ResultModal({
   newElo,
   opponentName,
   onPlayAgain,
-  onDashboard,
-  dashboardLabel,
+  onHome,
+  homeLabel,
   title,
   message,
   onClose,
@@ -148,12 +148,12 @@ export default function ResultModal({
               ⚔️ Play Again
             </button>
           )}
-          {onDashboard && (
-            <button className="btn btn-ghost" onClick={onDashboard} style={{ width: "100%" }}>
-              {dashboardLabel ?? "Back to Home"}
+          {onHome && (
+            <button className="btn btn-ghost" onClick={onHome} style={{ width: "100%" }}>
+              {homeLabel ?? "Back to Home"}
             </button>
           )}
-          {onClose && !onPlayAgain && !onDashboard && (
+          {onClose && !onPlayAgain && !onHome && (
             <button className="btn btn-primary" onClick={onClose} style={{ width: "100%" }}>
               Continue
             </button>

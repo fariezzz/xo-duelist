@@ -8,7 +8,6 @@ import PlayerCard from '../../../components/PlayerCard';
 import ResultModal from '../../../components/ResultModal';
 import type { ResultOutcome } from '../../../components/ResultModal';
 import GameBanner from '../../../components/notifications/GameBanner';
-import ConnectionStatus from '../../../components/notifications/ConnectionStatus';
 import MatchFoundModal from '../../../components/notifications/MatchFoundModal';
 import RankUpOverlay from '../../../components/notifications/RankUpOverlay';
 import GameHUD from '../../../components/GameHUD';
@@ -30,7 +29,6 @@ import { useStatusManager } from '../../../hooks/useStatusManager';
 import LiveChat from '../../../components/LiveChat';
 import VoiceChat from '../../../components/VoiceChat';
 
-type GamePresenceWindow = Window & { __XO_GAME_VISIBILITY_OVERRIDE__?: boolean };
 
 /* Tier helper — matches TierBadge logic */
 function getTierName(elo: number) {
@@ -47,16 +45,14 @@ export default function GameRoom() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const aiOrigin = searchParams.get('origin'); // 'dashboard' or 'matchmaking'
-  const { showToast, showBanner, banner, connectionStatus, setConnectionStatus } = useNotification();
+  const { showToast, showBanner, banner } = useNotification();
   const lock = useScopedSessionLock('arena');
 
   // Stable refs for notification functions to avoid re-render loops
   const showToastRef = useRef(showToast);
   const showBannerRef = useRef(showBanner);
-  const setConnectionStatusRef = useRef(setConnectionStatus);
   useEffect(() => { showToastRef.current = showToast; }, [showToast]);
   useEffect(() => { showBannerRef.current = showBanner; }, [showBanner]);
-  useEffect(() => { setConnectionStatusRef.current = setConnectionStatus; }, [setConnectionStatus]);
 
   const [room, setRoom] = useState<any>(null);
   const [board, setBoard] = useState<BoardCell[]>(Array(25).fill(null));
@@ -79,9 +75,6 @@ export default function GameRoom() {
   const lastStatusRef = useRef<string | null>(null);
   const timerWarningShown = useRef(false);
   const lastShuffleAtRef = useRef<number>(12);
-  const [isVisibilityPaused, setIsVisibilityPaused] = useState(false);
-  const hiddenOfflineTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hiddenStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -185,12 +178,14 @@ export default function GameRoom() {
   useEffect(() => {
     (async () => {
       const s = await supabaseClient.auth.getSession();
-      if (!s.data.session) return router.push('/');
+      if (!s.data.session) return router.replace('/');
       const uid = s.data.session.user.id;
       setMeId(uid);
       await setStatus('in_game', uid);
       const { data } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).single();
-      if (!data) return router.push('/dashboard');
+      if (!data) return router.replace('/dashboard');
+      // If game is already finished (e.g. user hit back button), redirect away
+      if (data.status === 'finished') return router.replace('/dashboard');
       setRoom(data);
       if (data.player1_ready && data.player2_ready) {
         setIsLobbyGameSession(true);
@@ -223,72 +218,6 @@ export default function GameRoom() {
       showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: '🎮', duration: 2500 });
     })();
   }, [roomId, router, setStatus]);
-  useEffect(() => {
-    (window as GamePresenceWindow).__XO_GAME_VISIBILITY_OVERRIDE__ = Boolean(meId && room?.status === 'ongoing');
-    return () => {
-      (window as GamePresenceWindow).__XO_GAME_VISIBILITY_OVERRIDE__ = false;
-    };
-  }, [meId, room?.status]);
-  useEffect(() => {
-    const clearHiddenTimeout = () => {
-      if (!hiddenOfflineTimeoutRef.current) return;
-      clearTimeout(hiddenOfflineTimeoutRef.current);
-      hiddenOfflineTimeoutRef.current = null;
-    };
-    if (!meId || room?.status !== 'ongoing') {
-      clearHiddenTimeout();
-      hiddenStartedAtRef.current = null;
-      setIsVisibilityPaused(false);
-      setConnectionStatusRef.current('connected');
-      return;
-    }
-    let active = true;
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        hiddenStartedAtRef.current = Date.now();
-        setIsVisibilityPaused(true);
-        setConnectionStatusRef.current('reconnecting');
-        showToastRef.current({
-          type: 'warning',
-          title: 'Opponent Connection Lost',
-          message: 'Background detected. Return within 20 seconds to remain in game.',
-          duration: 4000,
-        });
-        clearHiddenTimeout();
-        hiddenOfflineTimeoutRef.current = setTimeout(() => {
-          if (!active) return;
-          if (document.visibilityState !== 'hidden') return;
-          void setStatus('offline');
-        }, 20000);
-        return;
-      }
-      clearHiddenTimeout();
-      setIsVisibilityPaused(false);
-      setConnectionStatusRef.current('connected');
-      setTurnTimerKey((k) => k + 1);
-      const hiddenStartedAt = hiddenStartedAtRef.current;
-      hiddenStartedAtRef.current = null;
-      void setStatus('in_game');
-      if (hiddenStartedAt) {
-        const hiddenSeconds = Math.max(1, Math.floor((Date.now() - hiddenStartedAt) / 1000));
-        showToastRef.current({
-          type: 'info',
-          title: 'Connection Restored',
-          message: `You returned after ${hiddenSeconds}s.`,
-          duration: 3000,
-        });
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      active = false;
-      clearHiddenTimeout();
-      hiddenStartedAtRef.current = null;
-      setIsVisibilityPaused(false);
-      setConnectionStatusRef.current('connected');
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [meId, room?.status, setStatus]);
 
   /* ── Realtime channel ──────────────────────────── */
   useEffect(() => {
@@ -345,10 +274,7 @@ export default function GameRoom() {
           handleGameFinished(newRow);
         }
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setConnectionStatusRef.current('connected');
-        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setConnectionStatusRef.current('disconnected');
-      });
+      .subscribe();
 
     return () => { supabaseClient.removeChannel(channel); };
   }, [roomId, meId]);
@@ -1118,7 +1044,7 @@ export default function GameRoom() {
                       startedAt={room.last_move_at}
                       onExpire={onExpire}
                       onWarning={onTimerWarning}
-                      run={room.status === 'ongoing' && !isVisibilityPaused}
+                      run={room.status === 'ongoing'}
                     />
                   </div>
                   <div
@@ -1192,7 +1118,7 @@ export default function GameRoom() {
                       startedAt={room.last_move_at}
                       onExpire={onExpire}
                       onWarning={onTimerWarning}
-                      run={room.status === 'ongoing' && !isVisibilityPaused}
+                      run={room.status === 'ongoing'}
                     />
                   </div>
                   <div
@@ -1311,8 +1237,6 @@ export default function GameRoom() {
           </div>
         </div>
       )}
-      {/* Connection indicator */}
-      <ConnectionStatus status={connectionStatus} />
 
       {/* Rank Up Overlay (shows before result) */}
       <RankUpOverlay
@@ -1336,7 +1260,7 @@ export default function GameRoom() {
           isLobbyGame
             ? undefined
             : (
-              // AI from matchmaking fallback: no Play Again, just dashboard
+              // AI from matchmaking fallback: no Play Again, just home
               (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
                 : async () => {
                   await setStatus('online');
@@ -1370,7 +1294,7 @@ export default function GameRoom() {
                 }
             )
         }
-        onDashboard={async () => {
+        onHome={async () => {
           await setStatus('online');
           if (isLobbyGame) {
             try {
@@ -1414,7 +1338,7 @@ export default function GameRoom() {
           }
           router.push('/dashboard');
         }}
-        dashboardLabel={isLobbyGame ? 'Back to Lobby' : undefined}
+        homeLabel={isLobbyGame ? 'Back to Lobby' : undefined}
       />
       
       {!room?.is_vs_ai && (

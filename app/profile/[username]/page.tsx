@@ -265,18 +265,211 @@ export default function PublicProfilePage() {
     return (
       <>
         <Navbar />
-        <div className="pp-wrap">
-          <div className="card pp-card">
-            <h1 className="pp-h1">Profile not found</h1>
-            <p className="pp-muted">{error ?? `No user named "${username}".`}</p>
-            <button type="button" className="btn btn-primary" onClick={() => router.push("/dashboard")}>Back to dashboard</button>
+        <div className="pp-miss-wrap">
+          <div className="pp-miss-ambient pp-miss-ambient-a" />
+          <div className="pp-miss-ambient pp-miss-ambient-b" />
+
+          <div className="card pp-miss-card">
+            <p className="pp-miss-kicker">Public Profile</p>
+
+            <div className="pp-miss-sigil" aria-hidden="true">
+              <span>404</span>
+            </div>
+
+            <h1 className="pp-miss-title">Pilot Not Found</h1>
+            <p className="pp-miss-desc">
+              {error ?? `No duelist found with username "${username}".`}
+            </p>
+
+            <div className="pp-miss-hint-row">
+              <span className="pp-miss-hint">Check spelling</span>
+              <span className="pp-miss-hint">Username may have changed</span>
+            </div>
+
+            <div className="pp-miss-actions">
+              <button
+                type="button"
+                className="btn btn-primary pp-miss-main-btn"
+                onClick={() => router.push("/dashboard")}
+              >
+                Back to Home
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost pp-miss-sub-btn"
+                onClick={() => router.push("/leaderboard")}
+              >
+                Explore Leaderboard
+              </button>
+            </div>
           </div>
         </div>
         <style jsx>{`
-          .pp-wrap { min-height:100vh; padding:calc(var(--navbar-height)+32px) 20px 40px; display:flex; justify-content:center; }
-          .pp-card { max-width:420px; text-align:center; padding:28px; }
-          .pp-h1 { margin:0 0 8px; font-family:var(--font-heading); font-size:1.4rem; }
-          .pp-muted { color:var(--text-muted); margin:0 0 18px; font-size:0.92rem; }
+          .pp-miss-wrap {
+            min-height: 100vh;
+            padding: calc(var(--navbar-height) + 28px) 18px 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+          }
+
+          .pp-miss-ambient {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 9999px;
+            filter: blur(14px);
+            opacity: 0.45;
+          }
+
+          .pp-miss-ambient-a {
+            width: 320px;
+            height: 320px;
+            background: radial-gradient(circle, rgba(124,58,237,0.38) 0%, rgba(124,58,237,0) 68%);
+            top: 18%;
+            left: 14%;
+            animation: ppMissFloatA 8s ease-in-out infinite;
+          }
+
+          .pp-miss-ambient-b {
+            width: 420px;
+            height: 420px;
+            background: radial-gradient(circle, rgba(245,158,11,0.23) 0%, rgba(245,158,11,0) 70%);
+            bottom: 8%;
+            right: 6%;
+            animation: ppMissFloatB 10s ease-in-out infinite;
+          }
+
+          .pp-miss-card {
+            width: min(100%, 560px);
+            text-align: center;
+            padding: 28px 26px 24px;
+            position: relative;
+            border: 1px solid rgba(124,58,237,0.34);
+            background:
+              linear-gradient(145deg, rgba(18,25,49,0.86), rgba(12,17,36,0.92)),
+              radial-gradient(circle at 20% 10%, rgba(124,58,237,0.1), transparent 60%);
+            box-shadow:
+              0 20px 42px rgba(2, 6, 23, 0.58),
+              inset 0 0 0 1px rgba(148, 163, 184, 0.08),
+              0 0 34px rgba(124,58,237,0.2);
+          }
+
+          .pp-miss-kicker {
+            margin: 0 0 10px;
+            color: #93c5fd;
+            font-family: var(--font-heading);
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            font-weight: 700;
+            opacity: 0.9;
+          }
+
+          .pp-miss-sigil {
+            width: 86px;
+            height: 86px;
+            margin: 0 auto 14px;
+            border-radius: 50%;
+            border: 2px solid rgba(124,58,237,0.42);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+              radial-gradient(circle at 30% 30%, rgba(124,58,237,0.32), rgba(30,41,59,0.18) 70%),
+              rgba(15,23,42,0.66);
+            box-shadow:
+              inset 0 0 22px rgba(124,58,237,0.24),
+              0 0 18px rgba(124,58,237,0.3);
+            animation: ppMissPulse 3s ease-in-out infinite;
+          }
+
+          .pp-miss-sigil span {
+            font-family: var(--font-heading);
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #e2e8f0;
+          }
+
+          .pp-miss-title {
+            margin: 0 0 8px;
+            font-family: var(--font-heading);
+            font-size: clamp(1.38rem, 2.2vw, 1.72rem);
+            line-height: 1.12;
+            color: #f8fafc;
+            letter-spacing: 0.02em;
+          }
+
+          .pp-miss-desc {
+            margin: 0 auto;
+            max-width: 470px;
+            color: rgba(203, 213, 225, 0.88);
+            font-size: 0.95rem;
+            line-height: 1.55;
+          }
+
+          .pp-miss-hint-row {
+            margin-top: 14px;
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+          }
+
+          .pp-miss-hint {
+            border-radius: 9999px;
+            padding: 5px 10px;
+            font-family: var(--font-heading);
+            font-size: 0.72rem;
+            letter-spacing: 0.04em;
+            color: rgba(186, 230, 253, 0.92);
+            border: 1px solid rgba(56,189,248,0.28);
+            background: rgba(30, 41, 59, 0.58);
+          }
+
+          .pp-miss-actions {
+            margin-top: 18px;
+            display: grid;
+            gap: 10px;
+            grid-template-columns: 1fr;
+          }
+
+          .pp-miss-main-btn,
+          .pp-miss-sub-btn {
+            width: 100%;
+            justify-content: center;
+          }
+
+          .pp-miss-main-btn {
+            box-shadow: 0 0 24px rgba(124,58,237,0.36);
+          }
+
+          @media (min-width: 640px) {
+            .pp-miss-card {
+              padding: 32px 32px 28px;
+            }
+
+            .pp-miss-actions {
+              grid-template-columns: 1fr 1fr;
+            }
+          }
+
+          @keyframes ppMissPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+          }
+
+          @keyframes ppMissFloatA {
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            50% { transform: translate3d(18px, -16px, 0); }
+          }
+
+          @keyframes ppMissFloatB {
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            50% { transform: translate3d(-16px, 12px, 0); }
+          }
         `}</style>
       </>
     );

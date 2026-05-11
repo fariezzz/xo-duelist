@@ -88,7 +88,7 @@ function truncateName(name: string): string {
   return `${name.slice(0, 12)}...`;
 }
 
-export default function DashboardPage() {
+export default function HomePage() {
   const router = useRouter();
   const friendIdSetRef = useRef<Set<string>>(new Set());
 
@@ -103,7 +103,7 @@ export default function DashboardPage() {
   const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
   const [heroAvatarFailed, setHeroAvatarFailed] = useState(false);
 
-  // Invite from dashboard
+  // Invite from home
   const [invitingFriendId, setInvitingFriendId] = useState<string | null>(null);
   const [cancellingInviteId, setCancellingInviteId] = useState<string | null>(null);
   const [outgoingInviteMap, setOutgoingInviteMap] = useState<Map<string, string>>(new Map());
@@ -583,8 +583,8 @@ export default function DashboardPage() {
           matchmakingChannel = null;
         }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to load dashboard";
-        console.error("Dashboard load failed:", err);
+        const msg = err instanceof Error ? err.message : "Failed to load home";
+        console.error("Home load failed:", err);
 
         if (
           msg.toLowerCase().includes("refresh token") ||
@@ -656,7 +656,7 @@ export default function DashboardPage() {
     return (
       <main className="dash-error-wrap">
         <div className="dash-error-card">
-          <h2>Failed to load dashboard</h2>
+          <h2>Failed to load home</h2>
           <p>{error ?? "Unknown error"}</p>
           <button onClick={() => window.location.reload()}>Try Again</button>
         </div>

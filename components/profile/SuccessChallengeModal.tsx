@@ -28,7 +28,7 @@ export default function SuccessChallengeModal({
           ✅ Challenge Sent!
         </h2>
         <p className="ccm-body">
-          Game invite successfully sent to <strong>{username}</strong>. They will receive a notification and can join from their Dashboard or Friends list.
+          Game invite successfully sent to <strong>{username}</strong>. They will receive a notification and can join from Home or Friends.
         </p>
         <div className="ccm-actions">
           <button type="button" className="btn btn-primary" onClick={onClose} style={{ minHeight: '32px', padding: '0 16px', fontSize: '13px' }}>

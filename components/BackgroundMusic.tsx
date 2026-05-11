@@ -20,7 +20,7 @@ function getTrackConfig(pathname: string) {
 
 export default function BackgroundMusic() {
   const pathname = usePathname();
-  const isDashboardRoute = pathname === "/dashboard";
+  const isHomeRoute = pathname === "/dashboard";
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isMuted, setIsMuted] = useState(true);
   const [hasInteracted, setHasInteracted] = useState(false);
@@ -92,7 +92,7 @@ export default function BackgroundMusic() {
       <audio ref={audioRef} loop preload="auto" />
 
       <button
-        className={`bgm-toggle ${isDashboardRoute ? "has-bottom-nav" : ""}`}
+        className={`bgm-toggle ${isHomeRoute ? "has-bottom-nav" : ""}`}
         onClick={() => setIsMuted(!isMuted)}
         aria-label={isMuted ? "Unmute music" : "Mute music"}
         title={isMuted ? "Unmute Music" : "Mute Music"}
