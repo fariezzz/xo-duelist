@@ -55,6 +55,8 @@ export default function GameRoom() {
   // hasMountedIntroRef prevents the intro from firing a second time due to
   // realtime updates while the room.status stays 'ongoing'
   const hasMountedIntroRef = useRef(false);
+  // Override startedAt so the timer doesn't lose seconds to the intro animation
+  const timerStartOverride = useRef<string | null>(null);
 
   // Stable refs for notification functions to avoid re-render loops
   const showToastRef = useRef(showToast);
@@ -122,6 +124,14 @@ export default function GameRoom() {
       hasMountedIntroRef.current = false;
     }
   }, [introRequested]);
+
+  // Suppress BGM immediately on mount when intro is requested — before BGM even starts
+  useEffect(() => {
+    if (!introRequested) return;
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('battle-intro-start'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally run only once on mount
 
   // Trigger the intro once when room + profiles are both loaded
   useEffect(() => {
@@ -273,6 +283,7 @@ export default function GameRoom() {
         }
 
         setTurnTimerKey((k) => k + 1);
+        timerStartOverride.current = null;
         timerWarningShown.current = false;
         if (newRow.status !== 'ongoing' || newRow.current_turn !== meId) {
           turnSubmitLockRef.current = false;
@@ -312,6 +323,7 @@ export default function GameRoom() {
     if (room.status !== 'ongoing') return;
     if (room.current_turn === meId) return;
     if (aiMoveLockRef.current) return;
+    if (showIntro) return; // don't let AI move during intro
 
     aiMoveLockRef.current = true;
     setAiThinking(true);
@@ -515,7 +527,7 @@ export default function GameRoom() {
       aiMoveLockRef.current = false;
       setAiThinking(false);
     };
-  }, [room?.current_turn, room?.status, room?.is_vs_ai, meId, roomId]);
+  }, [room?.current_turn, room?.status, room?.is_vs_ai, meId, roomId, showIntro]);
 
   /* ── Handle game finished (fetch ELO data) ──── */
   const handleGameFinished = useCallback(async (newRow: any) => {
@@ -1067,10 +1079,10 @@ export default function GameRoom() {
                     <Timer
                       key={turnTimerKey}
                       seconds={getTimerSeconds(turnCurse)}
-                      startedAt={room.last_move_at}
+                      startedAt={timerStartOverride.current || room.last_move_at}
                       onExpire={onExpire}
                       onWarning={onTimerWarning}
-                      run={room.status === 'ongoing'}
+                      run={room.status === 'ongoing' && !showIntro}
                     />
                   </div>
                   <div
@@ -1141,10 +1153,10 @@ export default function GameRoom() {
                     <Timer
                       key={turnTimerKey}
                       seconds={getTimerSeconds(turnCurse)}
-                      startedAt={room.last_move_at}
+                      startedAt={timerStartOverride.current || room.last_move_at}
                       onExpire={onExpire}
                       onWarning={onTimerWarning}
-                      run={room.status === 'ongoing'}
+                      run={room.status === 'ongoing' && !showIntro}
                     />
                   </div>
                   <div
@@ -1270,7 +1282,11 @@ export default function GameRoom() {
           sessionKey={roomId}
           playerX={{ name: playerProfiles.p1.username, avatarUrl: playerProfiles.p1.avatarUrl }}
           playerO={{ name: playerProfiles.p2.username, avatarUrl: playerProfiles.p2.avatarUrl }}
-          onDone={() => setShowIntro(false)}
+          onDone={() => {
+            timerStartOverride.current = new Date().toISOString();
+            setShowIntro(false);
+            setTurnTimerKey(k => k + 1);
+          }}
         />
       )}
 

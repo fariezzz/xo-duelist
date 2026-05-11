@@ -26,13 +26,22 @@ export default function BackgroundMusic() {
   const [hasInteracted, setHasInteracted] = useState(false);
   const [currentTrack, setCurrentTrack] = useState(() => getTrackConfig(pathname || "/"));
 
+  // Hard gate: while true, all audio.play() calls are blocked
+  const battleIntroActiveRef = useRef(false);
+
+  // Safe play — respects the battle intro gate
+  const safePlay = (audio: HTMLAudioElement) => {
+    if (battleIntroActiveRef.current) return;
+    audio.play().catch((err) => console.warn("Audio play blocked:", err));
+  };
+
+  // Restore mute preference
   useEffect(() => {
     const saved = localStorage.getItem("bgm_muted");
-    if (saved === "false") {
-      setIsMuted(false);
-    }
+    if (saved === "false") setIsMuted(false);
   }, []);
 
+  // Track change on route navigation
   useEffect(() => {
     const nextTrack = getTrackConfig(pathname || "/");
     if (nextTrack.src !== currentTrack.src) {
@@ -40,6 +49,7 @@ export default function BackgroundMusic() {
     }
   }, [pathname, currentTrack.src]);
 
+  // Load & switch track src
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -47,17 +57,17 @@ export default function BackgroundMusic() {
     if (audio.src && !audio.src.endsWith(currentTrack.src)) {
       audio.src = currentTrack.src;
       audio.volume = currentTrack.volume;
-      if (!isMuted && hasInteracted) {
-        audio.play().catch((error) => console.warn("Audio play blocked:", error));
-      }
+      if (!isMuted && hasInteracted) safePlay(audio);
     } else if (!audio.src) {
       audio.src = currentTrack.src;
       audio.volume = currentTrack.volume;
     } else {
       audio.volume = currentTrack.volume;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTrack, isMuted, hasInteracted]);
 
+  // Mute / unmute
   useEffect(() => {
     localStorage.setItem("bgm_muted", isMuted.toString());
     const audio = audioRef.current;
@@ -65,27 +75,61 @@ export default function BackgroundMusic() {
     if (isMuted) {
       audio.pause();
     } else if (hasInteracted) {
-      audio.play().catch((error) => console.warn("Audio play blocked:", error));
+      safePlay(audio);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMuted, hasInteracted]);
 
+  // First interaction → unlock autoplay
   useEffect(() => {
     const handleInteraction = () => {
       if (hasInteracted) return;
       setHasInteracted(true);
-      if (!isMuted && audioRef.current) {
-        audioRef.current.play().catch((error) => console.warn("Audio play blocked:", error));
-      }
+      if (!isMuted && audioRef.current) safePlay(audioRef.current);
     };
-
     document.addEventListener("click", handleInteraction, { once: true });
     document.addEventListener("keydown", handleInteraction, { once: true });
-
     return () => {
       document.removeEventListener("click", handleInteraction);
       document.removeEventListener("keydown", handleInteraction);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasInteracted, isMuted]);
+
+  // ── Battle intro coordination ────────────────────────────
+  useEffect(() => {
+    const handleIntroStart = () => {
+      // Hard-block any play() while intro is active
+      battleIntroActiveRef.current = true;
+      const audio = audioRef.current;
+      if (audio && !audio.paused) audio.pause();
+    };
+
+    const handleIntroDone = () => {
+      battleIntroActiveRef.current = false;
+      const audio = audioRef.current;
+      if (!audio || isMuted) return;
+      // Fade in from 0 → target volume over ~1.2 s
+      audio.volume = 0;
+      audio.play().catch(() => {});
+      const target = currentTrack.volume;
+      const steps = 24;
+      const stepMs = 1200 / steps;
+      let step = 0;
+      const id = setInterval(() => {
+        step++;
+        if (audio) audio.volume = Math.min(target, (target / steps) * step);
+        if (step >= steps) clearInterval(id);
+      }, stepMs);
+    };
+
+    window.addEventListener("battle-intro-start", handleIntroStart);
+    window.addEventListener("battle-intro-done", handleIntroDone);
+    return () => {
+      window.removeEventListener("battle-intro-start", handleIntroStart);
+      window.removeEventListener("battle-intro-done", handleIntroDone);
+    };
+  }, [isMuted, currentTrack.volume]);
 
   return (
     <>
@@ -112,13 +156,13 @@ export default function BackgroundMusic() {
           transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
           fontSize: "1.2rem",
         }}
-        onMouseEnter={(event) => {
-          event.currentTarget.style.transform = "scale(1.1) translateY(-2px)";
-          event.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.1) translateY(-2px)";
+          e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
         }}
-        onMouseLeave={(event) => {
-          event.currentTarget.style.transform = "scale(1) translateY(0)";
-          event.currentTarget.style.background = "rgba(13, 21, 38, 0.85)";
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1) translateY(0)";
+          e.currentTarget.style.background = "rgba(13, 21, 38, 0.85)";
         }}
       >
         {isMuted ? "\u{1F507}" : "\u{1F3B5}"}
