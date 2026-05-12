@@ -18,7 +18,7 @@ export interface BannerItem {
   id: string;
   type: ToastType;
   message: string;
-  icon?: string;
+  icon?: React.ReactNode;
   pulse?: boolean;
   exiting?: boolean;
 }
@@ -32,7 +32,7 @@ export interface NotificationAPI {
   dismissToast(id: string): void;
   /* Banner */
   banner: BannerItem | null;
-  showBanner(opts: { type: ToastType; message: string; icon?: string; pulse?: boolean; duration?: number }): void;
+  showBanner(opts: { type: ToastType; message: string; icon?: React.ReactNode; pulse?: boolean; duration?: number }): void;
   dismissBanner(): void;
   /* Connection */
   connectionStatus: ConnectionState;
@@ -102,7 +102,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const showBanner = useCallback(
-    (opts: { type: ToastType; message: string; icon?: string; pulse?: boolean; duration?: number }) => {
+    (opts: { type: ToastType; message: string; icon?: React.ReactNode; pulse?: boolean; duration?: number }) => {
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
       const id = `banner-${++_toastCounter}`;
       setBanner({ id, type: opts.type, message: opts.message, icon: opts.icon, pulse: opts.pulse });

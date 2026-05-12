@@ -1,13 +1,29 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Award, Medal, Trophy } from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 import TierBadge from '../../components/TierBadge';
 
+type LeaderboardRow = {
+  id: string;
+  username: string;
+  elo_rating: number;
+  wins: number;
+  losses: number;
+  avatar_url: string | null;
+};
+
+const topRanks = [
+  { Icon: Trophy, color: '#fbbf24', label: 'Rank 1' },
+  { Icon: Medal, color: '#cbd5e1', label: 'Rank 2' },
+  { Icon: Award, color: '#f97316', label: 'Rank 3' },
+];
+
 export default function LeaderboardPage() {
   const router = useRouter();
-  const [rows, setRows] = useState<any[]>([]);
+  const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,7 +36,7 @@ export default function LeaderboardPage() {
         .select('id, username, elo_rating, wins, losses, avatar_url')
         .order('elo_rating', { ascending: false })
         .limit(50);
-      if (!cancelled) setRows(data || []);
+      if (!cancelled) setRows((data ?? []) as LeaderboardRow[]);
     };
     load();
     const channel = supabaseClient
@@ -30,14 +46,15 @@ export default function LeaderboardPage() {
     return () => { cancelled = true; supabaseClient.removeChannel(channel); };
   }, []);
 
-  const medals = ['🥇', '🥈', '🥉'];
-
   return (
     <>
       <Navbar />
       <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '24px' }}>🏅 Leaderboard</h1>
+          <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Trophy size={30} strokeWidth={2.4} color="var(--accent-gold)" />
+            Leaderboard
+          </h1>
           <div className="card" style={{ padding: '8px 0', overflow: 'auto' }}>
             <table className="table-premium">
               <thead>
@@ -55,10 +72,17 @@ export default function LeaderboardPage() {
                 {rows.map((r, i) => {
                   const wr = r.wins + r.losses === 0 ? 0 : Math.round((r.wins / (r.wins + r.losses)) * 100);
                   const isMe = r.id === meId;
+                  const TopRank = i < topRanks.length ? topRanks[i] : null;
                   return (
                     <tr key={r.id} style={{ background: isMe ? 'rgba(124,58,237,0.08)' : undefined, borderLeft: isMe ? '3px solid rgba(124,58,237,0.5)' : '3px solid transparent' }}>
                       <td style={{ paddingLeft: '20px', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: i < 3 ? '1.3rem' : '0.95rem' }}>
-                        {i < 3 ? medals[i] : i + 1}
+                        {TopRank ? (
+                          <span className="lb-rank-icon" title={TopRank.label} aria-label={TopRank.label}>
+                            <TopRank.Icon size={21} strokeWidth={2.5} color={TopRank.color} />
+                          </span>
+                        ) : (
+                          i + 1
+                        )}
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={() => router.push(`/profile/${encodeURIComponent(r.username)}`)} title={`View ${r.username}'s profile`}>
@@ -108,6 +132,14 @@ export default function LeaderboardPage() {
         .lb-avatar:hover {
           transform: scale(1.1);
           border-color: rgba(167, 139, 250, 0.5) !important;
+        }
+        .lb-rank-icon {
+          width: 28px;
+          height: 28px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          vertical-align: middle;
         }
         .lb-username {
           transition: color 0.2s;

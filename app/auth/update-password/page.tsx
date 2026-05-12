@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "../../../lib/supabase";
 
+const PASSWORD_METADATA_KEY = "xo_has_password";
+
 function getStrength(pw: string): { level: "weak" | "medium" | "strong"; pct: number; color: string } {
   if (pw.length < 8) return { level: "weak", pct: 20, color: "#ef4444" };
   const types = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((r) => r.test(pw)).length;
@@ -45,7 +47,21 @@ export default function UpdatePasswordPage() {
     setError(null);
     setSaving(true);
 
-    const { error: updateError } = await supabaseClient.auth.updateUser({ password });
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+
+    if (userError) {
+      setSaving(false);
+      setError(userError.message || "Failed to load current user.");
+      return;
+    }
+
+    const { error: updateError } = await supabaseClient.auth.updateUser({
+      password,
+      data: {
+        ...(userData.user?.user_metadata ?? {}),
+        [PASSWORD_METADATA_KEY]: true,
+      },
+    });
     setSaving(false);
 
     if (updateError) {

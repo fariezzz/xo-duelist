@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 interface Props {
   onSubmit: (currentPassword: string | null, newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -39,15 +40,27 @@ export default function ChangePasswordForm({
   const strength = getStrength(newPw);
   const confirmMatch = confirmPw.length > 0 && newPw === confirmPw;
   const confirmMismatch = confirmPw.length > 0 && newPw !== confirmPw;
+  const sameAsCurrent =
+    requireCurrentPassword &&
+    currentPw.length > 0 &&
+    newPw.length > 0 &&
+    currentPw === newPw;
   const canSubmit =
     (!requireCurrentPassword || currentPw.length > 0) &&
     newPw.length >= 8 &&
+    !sameAsCurrent &&
     confirmMatch &&
     !saving;
 
   async function handleSubmit() {
     setError(null);
     setSuccess(false);
+
+    if (sameAsCurrent) {
+      setError("New password must be different from your current password.");
+      return;
+    }
+
     setSaving(true);
 
     const result = await onSubmit(requireCurrentPassword ? currentPw : null, newPw);
@@ -83,8 +96,10 @@ export default function ChangePasswordForm({
     border: "none",
     color: "var(--text-muted)",
     cursor: "pointer",
-    fontSize: "1rem",
     padding: "4px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   };
 
   return (
@@ -150,8 +165,14 @@ export default function ChangePasswordForm({
               }}
               style={{ paddingRight: "40px" }}
             />
-            <button onClick={() => setShowCurrent(!showCurrent)} style={eyeBtnStyle} type="button">
-              {showCurrent ? "Hide" : "Show"}
+            <button
+              onClick={() => setShowCurrent(!showCurrent)}
+              style={eyeBtnStyle}
+              type="button"
+              aria-label={showCurrent ? "Hide current password" : "Show current password"}
+              title={showCurrent ? "Hide current password" : "Show current password"}
+            >
+              {showCurrent ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
             </button>
           </div>
         </div>
@@ -164,14 +185,31 @@ export default function ChangePasswordForm({
             className="input"
             type={showNew ? "text" : "password"}
             value={newPw}
-            onChange={(e) => setNewPw(e.target.value)}
+            onChange={(e) => {
+              setNewPw(e.target.value);
+              setError(null);
+            }}
             placeholder="Min 8 characters"
-            style={{ paddingRight: "40px" }}
+            style={{
+              paddingRight: "40px",
+              borderColor: sameAsCurrent ? "rgba(239,68,68,0.5)" : undefined,
+            }}
           />
-          <button onClick={() => setShowNew(!showNew)} style={eyeBtnStyle} type="button">
-            {showNew ? "Hide" : "Show"}
+          <button
+            onClick={() => setShowNew(!showNew)}
+            style={eyeBtnStyle}
+            type="button"
+            aria-label={showNew ? "Hide new password" : "Show new password"}
+            title={showNew ? "Hide new password" : "Show new password"}
+          >
+            {showNew ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
           </button>
         </div>
+        {sameAsCurrent && (
+          <div style={{ color: "#ef4444", fontSize: "0.78rem", fontFamily: "var(--font-heading)", marginTop: "4px" }}>
+            New password must be different from your current password.
+          </div>
+        )}
       </div>
 
       {newPw.length > 0 && (
@@ -214,8 +252,14 @@ export default function ChangePasswordForm({
               borderColor: confirmMismatch ? "rgba(239,68,68,0.5)" : confirmMatch ? "rgba(16,185,129,0.5)" : undefined,
             }}
           />
-          <button onClick={() => setShowConfirm(!showConfirm)} style={eyeBtnStyle} type="button">
-            {showConfirm ? "Hide" : "Show"}
+          <button
+            onClick={() => setShowConfirm(!showConfirm)}
+            style={eyeBtnStyle}
+            type="button"
+            aria-label={showConfirm ? "Hide password confirmation" : "Show password confirmation"}
+            title={showConfirm ? "Hide password confirmation" : "Show password confirmation"}
+          >
+            {showConfirm ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
           </button>
         </div>
         {confirmMismatch && (

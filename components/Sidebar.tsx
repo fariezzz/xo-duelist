@@ -1,6 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import {
+  Bot,
+  History,
+  House,
+  LogOut,
+  Target,
+  Trophy,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
 import type { UserStatus } from "../lib/statusUtils";
 import UserStatusBadge from "./ui/UserStatusBadge";
 
@@ -18,13 +28,13 @@ type SidebarProps = {
   onToggleStatus: () => void;
 };
 
-const NAV_ITEMS: Array<{ key: SidebarNavKey; label: string; icon: string; section: "play" | "social" }> = [
-  { key: "vs_ai", label: "VS AI", icon: "\u{1F916}", section: "play" },
-  { key: "training", label: "Training", icon: "\u{1F3AF}", section: "play" },
-  { key: "lobby", label: "Lobby", icon: "\u{1F3E0}", section: "play" },
-  { key: "friends", label: "Friends", icon: "\u{1F465}", section: "social" },
-  { key: "leaderboard", label: "Leaderboard", icon: "\u{1F3C6}", section: "social" },
-  { key: "history", label: "History", icon: "\u{1F4DC}", section: "social" },
+const NAV_ITEMS: Array<{ key: SidebarNavKey; label: string; Icon: LucideIcon; section: "play" | "social" }> = [
+  { key: "vs_ai", label: "VS AI", Icon: Bot, section: "play" },
+  { key: "training", label: "Training", Icon: Target, section: "play" },
+  { key: "lobby", label: "Lobby", Icon: House, section: "play" },
+  { key: "friends", label: "Friends", Icon: UsersRound, section: "social" },
+  { key: "leaderboard", label: "Leaderboard", Icon: Trophy, section: "social" },
+  { key: "history", label: "History", Icon: History, section: "social" },
 ];
 
 function getInitials(username: string): string {
@@ -48,13 +58,10 @@ export default function Sidebar({
   userStatus,
   onToggleStatus,
 }: SidebarProps) {
-  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const playItems = NAV_ITEMS.filter((item) => item.section === "play");
   const socialItems = NAV_ITEMS.filter((item) => item.section === "social");
-
-  useEffect(() => {
-    setAvatarFailed(false);
-  }, [avatarUrl]);
+  const profileAvatarSrc = avatarUrl && failedAvatarUrl !== avatarUrl ? avatarUrl : null;
 
   return (
     <aside className="sb-root">
@@ -70,37 +77,49 @@ export default function Sidebar({
       <nav className="sb-nav">
         <section className="sb-group">
           <div className="sb-group-label">Play</div>
-          {playItems.map((item) => (
-            <button
-              key={item.key}
-              className={`sb-item ${activeNav === item.key ? "is-active" : ""}`}
-              onClick={() => onNavigate(item.key)}
-              title={item.label}
-            >
-              <span className="sb-item-icon">{item.icon}</span>
-              <span className="sb-item-label">{item.label}</span>
-              <span className="sb-item-dot" />
-            </button>
-          ))}
+          {playItems.map((item) => {
+            const ItemIcon = item.Icon;
+
+            return (
+              <button
+                key={item.key}
+                className={`sb-item ${activeNav === item.key ? "is-active" : ""}`}
+                onClick={() => onNavigate(item.key)}
+                title={item.label}
+              >
+                <span className="sb-item-icon">
+                  <ItemIcon size={18} strokeWidth={2.35} aria-hidden="true" />
+                </span>
+                <span className="sb-item-label">{item.label}</span>
+                <span className="sb-item-dot" />
+              </button>
+            );
+          })}
         </section>
 
         <section className="sb-group">
           <div className="sb-group-label">Social</div>
-          {socialItems.map((item) => (
-            <button
-              key={item.key}
-              className={`sb-item ${activeNav === item.key ? "is-active" : ""}`}
-              onClick={() => onNavigate(item.key)}
-              title={item.label}
-            >
-              <span className="sb-item-icon">{item.icon}</span>
-              <span className="sb-item-label">{item.label}</span>
-              {item.key === "friends" && pendingFriendRequests > 0 && (
-                <span className="sb-item-badge">{pendingFriendRequests > 9 ? "9+" : pendingFriendRequests}</span>
-              )}
-              <span className="sb-item-dot" />
-            </button>
-          ))}
+          {socialItems.map((item) => {
+            const ItemIcon = item.Icon;
+
+            return (
+              <button
+                key={item.key}
+                className={`sb-item ${activeNav === item.key ? "is-active" : ""}`}
+                onClick={() => onNavigate(item.key)}
+                title={item.label}
+              >
+                <span className="sb-item-icon">
+                  <ItemIcon size={18} strokeWidth={2.35} aria-hidden="true" />
+                </span>
+                <span className="sb-item-label">{item.label}</span>
+                {item.key === "friends" && pendingFriendRequests > 0 && (
+                  <span className="sb-item-badge">{pendingFriendRequests > 9 ? "9+" : pendingFriendRequests}</span>
+                )}
+                <span className="sb-item-dot" />
+              </button>
+            );
+          })}
         </section>
 
         <button
@@ -109,19 +128,19 @@ export default function Sidebar({
           title="Sign Out"
           aria-label="Sign Out"
         >
-          <span className="sb-mobile-signout-icon">{"\u{1F6AA}"}</span>
+          <LogOut className="sb-mobile-signout-icon" size={19} strokeWidth={2.35} aria-hidden="true" />
         </button>
       </nav>
 
       <div className="sb-bottom">
         <button className="sb-profile" onClick={onOpenProfile} title="Open profile">
           <div className="sb-profile-avatar">
-            {avatarUrl && !avatarFailed ? (
+            {profileAvatarSrc ? (
               <img
-                src={avatarUrl}
+                src={profileAvatarSrc}
                 alt={username}
                 referrerPolicy="no-referrer"
-                onError={() => setAvatarFailed(true)}
+                onError={() => setFailedAvatarUrl(profileAvatarSrc)}
               />
             ) : (
               <span>{getInitials(username)}</span>
@@ -138,7 +157,7 @@ export default function Sidebar({
         </button>
 
         <button className="sb-signout" onClick={onSignOut}>
-          <span className="sb-signout-icon">{"\u{1F6AA}"}</span>
+          <LogOut className="sb-signout-icon" size={16} strokeWidth={2.35} aria-hidden="true" />
           <span className="sb-signout-text">Sign Out</span>
         </button>
       </div>
@@ -250,9 +269,10 @@ export default function Sidebar({
 
         .sb-item-icon {
           width: 20px;
-          font-size: 0.92rem;
-          line-height: 1;
-          text-align: center;
+          height: 20px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           flex-shrink: 0;
         }
 
@@ -416,7 +436,7 @@ export default function Sidebar({
         }
 
         .sb-signout-icon {
-          font-size: 0.95rem;
+          flex-shrink: 0;
         }
 
         .sb-mobile-signout {
@@ -429,8 +449,7 @@ export default function Sidebar({
         }
 
         .sb-mobile-signout-icon {
-          font-size: 1rem;
-          line-height: 1;
+          flex-shrink: 0;
         }
 
         @media (max-width: 1024px) {

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { BellRing, UsersRound } from "lucide-react";
 import type { UserStatus } from "../lib/statusUtils";
 import { STATUS_LABEL } from "../lib/statusUtils";
 import StatusDot from "./ui/StatusDot";
@@ -89,7 +90,9 @@ useEffect(() => {
     <aside className="rp-root">
       <section className="rp-card">
         <div className="rp-card-title">
-          <span>{"\u{1F514}"}</span>
+          <span className="rp-title-icon">
+            <BellRing size={15} strokeWidth={2.35} aria-hidden="true" />
+          </span>
           <span>Arena Status</span>
         </div>
         <div className="rp-info-row">
@@ -113,7 +116,9 @@ useEffect(() => {
       <section className="rp-card rp-friends">
         <div className="rp-card-head">
           <div className="rp-card-title">
-            <span>{"\u{1F465}"}</span>
+            <span className="rp-title-icon">
+              <UsersRound size={15} strokeWidth={2.35} aria-hidden="true" />
+            </span>
             <span>Friends</span>
           </div>
           <button className="rp-link" onClick={onViewFriends}>
@@ -219,6 +224,18 @@ useEffect(() => {
           font-size: 0.95rem;
           font-weight: 700;
           color: #f8fafc;
+        }
+
+        .rp-title-icon {
+          width: 20px;
+          height: 20px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #c4b5fd;
+          background: rgba(124, 58, 237, 0.16);
         }
 
         .rp-card-head {

@@ -2,6 +2,18 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Gauge,
+  Handshake,
+  History,
+  RotateCcw,
+  ShieldAlert,
+  Swords,
+  Trophy,
+  TrendingUp,
+  UserRound,
+  Zap,
+} from "lucide-react";
 import useSound from "use-sound";
 import { supabaseClient } from "../../lib/supabase";
 import MatchFoundModal from "../../components/notifications/MatchFoundModal";
@@ -101,7 +113,7 @@ export default function HomePage() {
   const [pendingFriendRequestCount, setPendingFriendRequestCount] = useState(0);
   const [arenaInviteCount, setArenaInviteCount] = useState(0);
   const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
-  const [heroAvatarFailed, setHeroAvatarFailed] = useState(false);
+  const [failedHeroAvatarUrl, setFailedHeroAvatarUrl] = useState<string | null>(null);
 
   // Invite from home
   const [invitingFriendId, setInvitingFriendId] = useState<string | null>(null);
@@ -142,10 +154,6 @@ export default function HomePage() {
     oppElo: number;
   } | null>(null);
   const [playMatchFound] = useSound("/sounds/match-found.mp3", { volume: 0.7 });
-
-  useEffect(() => {
-    setHeroAvatarFailed(false);
-  }, [profile?.avatar_url]);
 
   const totalMatches = useMemo(() => {
     if (!profile) return 0;
@@ -708,6 +716,8 @@ export default function HomePage() {
   }
 
   const userInitials = getInitials(profile.username);
+  const heroAvatarSrc =
+    profile.avatar_url && failedHeroAvatarUrl !== profile.avatar_url ? profile.avatar_url : null;
 
   return (
     <>
@@ -733,12 +743,12 @@ export default function HomePage() {
             <div className="hero-left">
               <button className="hero-avatar-btn" onClick={goToProfile} title="Go to profile">
                 <div className="hero-avatar">
-                  {profile.avatar_url && !heroAvatarFailed ? (
+                  {heroAvatarSrc ? (
                     <img
-                      src={profile.avatar_url}
+                      src={heroAvatarSrc}
                       alt={profile.username}
                       referrerPolicy="no-referrer"
-                      onError={() => setHeroAvatarFailed(true)}
+                      onError={() => setFailedHeroAvatarUrl(heroAvatarSrc)}
                     />
                   ) : (
                     <span>{userInitials}</span>
@@ -747,7 +757,10 @@ export default function HomePage() {
               </button>
 
               <div className="hero-copy">
-                <span className="hero-kicker">WELCOME BACK</span>
+                <span className="hero-kicker">
+                  <Swords size={14} strokeWidth={2.4} aria-hidden="true" />
+                  WELCOME BACK
+                </span>
                 <button className="hero-username-link" onClick={goToProfile} title="Open profile">
                   {profile.username}
                 </button>
@@ -784,10 +797,14 @@ export default function HomePage() {
             </div>
 
             <div className="hero-right">
-              <div className="hero-elo-label">CURRENT ELO</div>
+              <div className="hero-elo-label">
+                <Gauge size={14} strokeWidth={2.4} aria-hidden="true" />
+                CURRENT ELO
+              </div>
               <div className="hero-elo-value">{profile.elo_rating}</div>
               {rank && (
                 <div className="hero-rank">
+                  <Trophy size={15} strokeWidth={2.4} aria-hidden="true" />
                   Rank #{rank.position} of {rank.total}
                 </div>
               )}
@@ -796,6 +813,7 @@ export default function HomePage() {
                   className="hero-rejoin-btn"
                   onClick={() => router.push(`/game/${activeGameRoomId}`)}
                 >
+                  <Swords size={16} strokeWidth={2.4} aria-hidden="true" />
                   Rejoin Match
                 </button>
               )}
@@ -803,27 +821,50 @@ export default function HomePage() {
           </section>
 
           <section className="dash-stats">
-            <article className="stat-card">
-              <span className="stat-label">Wins</span>
+            <article className="stat-card stat-win">
+              <div className="stat-top">
+                <span className="stat-icon">
+                  <Trophy size={18} strokeWidth={2.4} aria-hidden="true" />
+                </span>
+                <span className="stat-label">Wins</span>
+              </div>
               <strong className="stat-value win">{profile.wins}</strong>
             </article>
-            <article className="stat-card">
-              <span className="stat-label">Losses</span>
+            <article className="stat-card stat-loss">
+              <div className="stat-top">
+                <span className="stat-icon">
+                  <ShieldAlert size={18} strokeWidth={2.4} aria-hidden="true" />
+                </span>
+                <span className="stat-label">Losses</span>
+              </div>
               <strong className="stat-value loss">{profile.losses}</strong>
             </article>
-            <article className="stat-card">
-              <span className="stat-label">Draws</span>
+            <article className="stat-card stat-draws">
+              <div className="stat-top">
+                <span className="stat-icon">
+                  <Handshake size={18} strokeWidth={2.4} aria-hidden="true" />
+                </span>
+                <span className="stat-label">Draws</span>
+              </div>
               <strong className="stat-value draws">{profile.draws}</strong>
             </article>
-            <article className="stat-card">
-              <span className="stat-label">Winrate</span>
+            <article className="stat-card stat-rate">
+              <div className="stat-top">
+                <span className="stat-icon">
+                  <TrendingUp size={18} strokeWidth={2.4} aria-hidden="true" />
+                </span>
+                <span className="stat-label">Winrate</span>
+              </div>
               <strong className="stat-value rate">{winrate}%</strong>
             </article>
           </section>
 
           <section className="dash-utility-row card-panel">
             <div className="dash-recent-activity">
-              <div className="dash-utility-title">Recent Activity</div>
+              <div className="dash-utility-title">
+                <History size={14} strokeWidth={2.4} aria-hidden="true" />
+                Recent Activity
+              </div>
               <div className="dash-recent-list">
                 {recentMatches.length > 0 ? (
                   recentMatches.map((match) => (
@@ -852,16 +893,22 @@ export default function HomePage() {
             </div>
 
             <div className="dash-quick-actions">
-              <div className="dash-utility-title">Quick Actions</div>
+              <div className="dash-utility-title">
+                <Zap size={14} strokeWidth={2.4} aria-hidden="true" />
+                Quick Actions
+              </div>
               <div className="dash-quick-btns">
                 <button className="dash-quick-btn" onClick={goToProfile}>
-                  View Profile
+                  <UserRound size={15} strokeWidth={2.4} aria-hidden="true" />
+                  <span>View Profile</span>
                 </button>
                 <button className="dash-quick-btn" onClick={() => router.push("/history")}>
-                  Match History
+                  <History size={15} strokeWidth={2.4} aria-hidden="true" />
+                  <span>Match History</span>
                 </button>
                 <button className="dash-quick-btn" onClick={() => router.push("/lobby")}>
-                  Open Lobby
+                  <RotateCcw size={15} strokeWidth={2.4} aria-hidden="true" />
+                  <span>Open Lobby</span>
                 </button>
               </div>
             </div>
@@ -1000,10 +1047,16 @@ export default function HomePage() {
 
         .hero-copy {
           min-width: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          transform: translateY(-3px);
         }
 
         .hero-kicker {
-          display: block;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
           color: #94a3b8;
           font-family: var(--font-heading);
           font-size: 0.8rem;
@@ -1014,7 +1067,8 @@ export default function HomePage() {
         }
 
         .hero-username-link {
-          margin: 4px 0 8px;
+          display: block;
+          margin: 2px 0 7px;
           border: none;
           background: transparent;
           padding: 0;
@@ -1022,7 +1076,7 @@ export default function HomePage() {
           text-align: left;
           font-family: var(--font-heading);
           font-size: clamp(2rem, 3vw, 2.6rem);
-          line-height: 1;
+          line-height: 0.95;
           color: #f8fafc;
           white-space: nowrap;
           overflow: hidden;
@@ -1070,6 +1124,10 @@ export default function HomePage() {
         }
 
         .hero-elo-label {
+          display: inline-flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 6px;
           font-family: var(--font-heading);
           font-size: 0.78rem;
           font-weight: 700;
@@ -1089,6 +1147,10 @@ export default function HomePage() {
 
         .hero-rank {
           margin-top: 4px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 6px;
           color: #94a3b8;
           font-family: var(--font-heading);
           font-size: 1.03rem;
@@ -1101,6 +1163,10 @@ export default function HomePage() {
           border-radius: 9px;
           height: 34px;
           padding: 0 12px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
           background: linear-gradient(135deg, #10b981, #059669);
           color: #fff;
           font-family: var(--font-heading);
@@ -1131,10 +1197,50 @@ export default function HomePage() {
           flex-direction: column;
           justify-content: center;
           align-items: flex-start;
+          gap: 5px;
           min-width: 0;
         }
 
+        .stat-top {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .stat-icon {
+          width: 23px;
+          height: 23px;
+          border-radius: 7px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: rgba(255, 255, 255, 0.06);
+        }
+
+        .stat-win .stat-icon {
+          color: #34d399;
+          background: rgba(16, 185, 129, 0.14);
+        }
+
+        .stat-loss .stat-icon {
+          color: #f87171;
+          background: rgba(239, 68, 68, 0.14);
+        }
+
+        .stat-draws .stat-icon {
+          color: #cbd5e1;
+          background: rgba(148, 163, 184, 0.12);
+        }
+
+        .stat-rate .stat-icon {
+          color: #f59e0b;
+          background: rgba(245, 158, 11, 0.14);
+        }
+
         .stat-label {
+          min-width: 0;
           color: #94a3b8;
           font-family: var(--font-heading);
           font-size: 0.7rem;
@@ -1145,7 +1251,7 @@ export default function HomePage() {
         }
 
         .stat-value {
-          margin-top: 6px;
+          margin-top: 0;
           font-family: var(--font-heading);
           font-size: 1.8rem;
           font-weight: 700;
@@ -1184,6 +1290,9 @@ export default function HomePage() {
         }
 
         .dash-utility-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
           color: #94a3b8;
           font-family: var(--font-heading);
           font-size: 0.72rem;
@@ -1307,12 +1416,26 @@ export default function HomePage() {
           border-radius: 8px;
           min-height: 30px;
           padding: 0 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
           text-align: left;
           font-family: var(--font-heading);
           font-size: 0.82rem;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.2s ease;
+        }
+
+        .dash-quick-btn svg {
+          flex-shrink: 0;
+        }
+
+        .dash-quick-btn span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .dash-quick-btn:hover {

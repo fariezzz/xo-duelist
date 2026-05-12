@@ -4,6 +4,7 @@ import { supabaseClient, setRememberMe } from '../lib/supabase';
 import { getAuthRedirectUrl } from '../lib/auth-redirect';
 import { useRouter } from 'next/navigation';
 import { useNotification } from '../hooks/useNotification';
+import { Eye, EyeOff } from 'lucide-react';
 
 type OAuthProvider = 'google' | 'github' | 'discord';
 
@@ -56,6 +57,7 @@ export default function Home() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [rememberMe, setRemember] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { showToast } = useNotification();
 
@@ -331,14 +333,39 @@ export default function Home() {
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <input
-            className="input"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              className="input"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{ paddingRight: '44px' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((value) => !value)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              title={showPassword ? 'Hide password' : 'Show password'}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px',
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+            </button>
+          </div>
 
           {/* Remember Me */}
           {mode === 'login' && (

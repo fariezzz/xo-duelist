@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
+import { Bot, Shield, Swords, Zap } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -14,8 +15,17 @@ interface Props {
   aiEloMode?: "none" | "reduced";
 }
 
-export default function MatchFoundModal({
-  open,
+type MatchFoundContentProps = Omit<Props, "open">;
+
+export default function MatchFoundModal(props: Props) {
+  const { open, ...contentProps } = props;
+
+  if (!open) return null;
+
+  return <MatchFoundModalContent {...contentProps} />;
+}
+
+function MatchFoundModalContent({
   myName,
   myElo,
   myAvatarUrl,
@@ -25,25 +35,19 @@ export default function MatchFoundModal({
   onCountdownDone,
   isVsAi,
   aiEloMode,
-}: Props) {
+}: MatchFoundContentProps) {
   const [count, setCount] = useState(3);
   const onDoneRef = useRef(onCountdownDone);
   useEffect(() => { onDoneRef.current = onCountdownDone; }, [onCountdownDone]);
 
   useEffect(() => {
-    if (!open) {
-      setCount(3);
-      return;
-    }
     if (count <= 0) {
       onDoneRef.current();
       return;
     }
     const t = setTimeout(() => setCount((c) => c - 1), 1000);
     return () => clearTimeout(t);
-  }, [open, count]);
-
-  if (!open) return null;
+  }, [count]);
 
   const eloDiff = oppElo - myElo;
   const diffLabel =
@@ -52,6 +56,9 @@ export default function MatchFoundModal({
       : eloDiff < 0
         ? `Opponent is ${eloDiff} ELO lower`
         : "Same ELO rating";
+  const HeaderIcon = isVsAi ? Bot : Swords;
+  const OpponentFallbackIcon = isVsAi ? Bot : Shield;
+  const EloImpactIcon = aiEloMode === "none" ? Shield : Zap;
 
   return (
     <div
@@ -91,9 +98,15 @@ export default function MatchFoundModal({
             textTransform: "uppercase",
             letterSpacing: "0.15em",
             marginBottom: "24px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            width: "100%",
           }}
         >
-          {isVsAi ? '🤖 AI Match Found!' : '⚔️ Match Found!'}
+          <HeaderIcon size={18} strokeWidth={2.4} aria-hidden="true" />
+          <span>{isVsAi ? "AI Match Found!" : "Match Found!"}</span>
         </div>
 
         {/* VS Layout */}
@@ -129,7 +142,7 @@ export default function MatchFoundModal({
               {myAvatarUrl ? (
                 <img src={myAvatarUrl} alt={myName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                "⚔️"
+                <Swords size={28} strokeWidth={2.35} color="#ede9fe" aria-hidden="true" />
               )}
             </div>
             <div
@@ -195,7 +208,7 @@ export default function MatchFoundModal({
               {oppAvatarUrl ? (
                 <img src={oppAvatarUrl} alt={oppName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                isVsAi ? "🤖" : "🛡️"
+                <OpponentFallbackIcon size={28} strokeWidth={2.35} color="#fde68a" aria-hidden="true" />
               )}
             </div>
             <div
@@ -252,7 +265,8 @@ export default function MatchFoundModal({
             fontWeight: 600,
             color: aiEloMode === "none" ? '#10b981' : '#fbbf24',
           }}>
-            {aiEloMode === "none" ? "🛡️ No ELO Impact" : "⚡ Small ELO Impact"}
+            <EloImpactIcon size={14} strokeWidth={2.35} aria-hidden="true" />
+            <span>{aiEloMode === "none" ? "No ELO Impact" : "Small ELO Impact"}</span>
           </div>
         )}
 

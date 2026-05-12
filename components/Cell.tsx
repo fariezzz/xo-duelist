@@ -1,5 +1,6 @@
 "use client";
 import React from 'react';
+import { CurseCellIcon, PowerCellIcon, SkillIcon } from './MechanicIcon';
 
 type Props = {
   value: 'X' | 'O' | 'BARRIER' | null;
@@ -28,9 +29,7 @@ export default function Cell({
 }: Props) {
   const isBarrier = value === 'BARRIER';
   const isEmpty = value === null;
-  const isFilled = value === 'X' || value === 'O';
 
-  // --- Border & background ---
   let borderColor = 'rgba(124, 58, 237, 0.4)';
   let background = 'rgba(124, 58, 237, 0.06)';
   let boxShadow = '0 0 15px rgba(124, 58, 237, 0.15)';
@@ -85,7 +84,6 @@ export default function Cell({
     baseStyle.animation = 'card-flip 0.6s ease-in-out';
   }
 
-  // Blind overlay
   const blindOverlay = isBlinded ? (
     <div style={{
       position: 'absolute', inset: 0,
@@ -115,17 +113,17 @@ export default function Cell({
 
   let content: React.ReactNode;
   if (isBarrier) {
-    content = <span style={{ fontSize: 'var(--board-symbol-size)' }}>🛡️</span>;
+    content = <SkillIcon skill="BARRIER" size="var(--board-symbol-size)" />;
   } else if (value === 'X') {
     content = <span style={xStyle}>X</span>;
   } else if (value === 'O') {
     content = <span style={oStyle}>O</span>;
   } else if (isPowerCell) {
-    content = <span style={{ fontSize: 'calc(var(--board-mark-size) + 0.1rem)', filter: 'drop-shadow(0 0 6px rgba(245,158,11,0.6))' }}>✦</span>;
+    content = <PowerCellIcon size="calc(var(--board-mark-size) + 0.1rem)" style={{ filter: 'drop-shadow(0 0 6px rgba(245,158,11,0.6))' }} />;
   } else if (isCursedRevealed) {
-    content = <span style={{ fontSize: 'calc(var(--board-mark-size) + 0.1rem)' }}>💀</span>;
+    content = <CurseCellIcon size="calc(var(--board-mark-size) + 0.1rem)" />;
   } else {
-    content = <span style={{ fontSize: 'var(--board-mark-size)', color: 'rgba(255,255,255,0.15)', lineHeight: 1 }}>·</span>;
+    content = <span style={{ fontSize: 'var(--board-mark-size)', color: 'rgba(255,255,255,0.15)', lineHeight: 1 }}>.</span>;
   }
 
   return (
@@ -135,4 +133,3 @@ export default function Cell({
     </button>
   );
 }
-

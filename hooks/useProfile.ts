@@ -6,6 +6,8 @@ import type { UserIdentity } from '@supabase/supabase-js';
 
 export type ManagedProvider = 'google' | 'github' | 'discord';
 
+const PASSWORD_METADATA_KEY = 'xo_has_password';
+
 export interface LinkedAccount {
   provider: string;
   identityId: string | null;
@@ -25,6 +27,7 @@ export interface ProfileData {
   created_at: string;
   updated_at: string | null;
   email: string;
+  hasPassword: boolean;
   linkedAccounts: LinkedAccount[];
   rank: number | null;
   totalPlayers: number;
@@ -65,6 +68,49 @@ function mapEmailUpdateError(rawError: unknown): string {
 
 function normalizeProvider(value: unknown): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function hasProvider(providerList: unknown, providerName: string): boolean {
+  if (!Array.isArray(providerList)) return false;
+  return providerList.some((provider) => normalizeProvider(provider) === providerName);
+}
+
+function hasPasswordMetadata(userMetadata: Record<string, unknown> | null | undefined): boolean {
+  return userMetadata?.[PASSWORD_METADATA_KEY] === true ||
+    userMetadata?.has_password === true ||
+    userMetadata?.password_created === true;
+}
+
+function hasPasswordAuthMethod(methods: unknown): boolean {
+  if (!Array.isArray(methods)) return false;
+
+  return methods.some((entry) => {
+    if (typeof entry === 'string') {
+      return normalizeProvider(entry) === 'password';
+    }
+
+    if (entry && typeof entry === 'object' && 'method' in entry) {
+      return normalizeProvider((entry as { method?: unknown }).method) === 'password';
+    }
+
+    return false;
+  });
+}
+
+function getExistingUserMetadata(userMetadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  return userMetadata && typeof userMetadata === 'object' ? { ...userMetadata } : {};
+}
+
+function markProfileHasPassword(profile: ProfileData | null): ProfileData | null {
+  return profile ? { ...profile, hasPassword: true } : profile;
+}
+
+function getErrorMessage(rawError: unknown, fallback: string): string {
+  if (rawError && typeof rawError === 'object' && 'message' in rawError) {
+    const message = String((rawError as { message?: unknown }).message ?? '');
+    if (message) return message;
+  }
+  return fallback;
 }
 
 function readIdentityField(identityData: Record<string, unknown> | null, keys: string[]): string | null {
@@ -239,7 +285,12 @@ function buildLinkedAccounts(user: {
     });
   }
 
-  return Array.from(accountMap.values()).map(({ recency: _recency, ...account }) => account).sort((a, b) => {
+  return Array.from(accountMap.values()).map((account) => ({
+    provider: account.provider,
+    identityId: account.identityId,
+    identifier: account.identifier,
+    avatarUrl: account.avatarUrl,
+  })).sort((a, b) => {
     const orderDiff = getProviderOrder(a.provider) - getProviderOrder(b.provider);
     if (orderDiff !== 0) return orderDiff;
     return a.provider.localeCompare(b.provider);
@@ -302,6 +353,14 @@ export function useProfile() {
       const email = authUser.email ?? '';
       const identities = identitiesResult.data?.identities ?? authUser.identities ?? null;
       const linkedAccounts = buildLinkedAccounts(authUser, identities);
+      const aalResult = await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();
+      const appMetadata = authUser.app_metadata ?? {};
+      const hasPassword =
+        normalizeProvider(appMetadata.provider) === 'email' ||
+        hasProvider(appMetadata.providers, 'email') ||
+        linkedAccounts.some((account) => account.provider === 'email' && !!account.identityId) ||
+        hasPasswordMetadata(authUser.user_metadata) ||
+        hasPasswordAuthMethod(aalResult.data?.currentAuthenticationMethods);
 
       const { data, error: profileError } = await supabaseClient
         .from('profiles')
@@ -329,6 +388,7 @@ export function useProfile() {
         ...data,
         avatar_url: effectiveAvatarUrl,
         email,
+        hasPassword,
         linkedAccounts,
         rank: (count ?? 0) + 1,
         totalPlayers: totalCount ?? 0,
@@ -340,15 +400,19 @@ export function useProfile() {
           .update({ avatar_url: linkedAvatarFallback })
           .eq('id', uid);
       }
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to load profile');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load profile'));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchProfile();
+    const timeoutId = setTimeout(() => {
+      void fetchProfile();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [fetchProfile]);
 
   // ── Username Availability ────────────────────────
@@ -408,8 +472,8 @@ export function useProfile() {
 
       setProfile((prev) => prev ? { ...prev, ...updates } : prev);
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message ?? 'Failed to update profile' };
+    } catch (err: unknown) {
+      return { success: false, error: getErrorMessage(err, 'Failed to update profile') };
     } finally {
       setSaving(false);
     }
@@ -524,10 +588,18 @@ export function useProfile() {
     if (!profile) throw new Error('No profile loaded');
     setSaving(true);
     try {
+      const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+      if (userError) throw userError;
+
       const { error } = await supabaseClient.auth.updateUser({
         password: newPassword,
+        data: {
+          ...getExistingUserMetadata(userData.user?.user_metadata),
+          [PASSWORD_METADATA_KEY]: true,
+        },
       });
       if (error) throw error;
+      setProfile(markProfileHasPassword);
       return { success: true };
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err
@@ -553,11 +625,33 @@ export function useProfile() {
       if (!current) {
         return { success: false, error: 'Current password is required.' };
       }
+      if (current === newPassword) {
+        return { success: false, error: 'New password must be different from your current password.' };
+      }
+      const email = profile.email.trim().toLowerCase();
+      if (!email) {
+        return { success: false, error: 'This account does not have an email address.' };
+      }
+
+      const { data: verifiedUserData, error: verifyError } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password: current,
+      });
+
+      if (verifyError || !verifiedUserData.user) {
+        return { success: false, error: 'Current password is incorrect.' };
+      }
+
       const { error } = await supabaseClient.auth.updateUser({
         password: newPassword,
         current_password: current,
+        data: {
+          ...getExistingUserMetadata(verifiedUserData.user.user_metadata),
+          [PASSWORD_METADATA_KEY]: true,
+        },
       });
       if (error) throw error;
+      setProfile(markProfileHasPassword);
       return { success: true };
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'message' in err

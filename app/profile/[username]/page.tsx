@@ -2,6 +2,24 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import {
+  BarChart3,
+  CalendarDays,
+  Check,
+  Copy,
+  Flame,
+  Handshake,
+  Medal,
+  Pencil,
+  Swords,
+  Target,
+  Trophy,
+  UserMinus,
+  UserPlus,
+  X,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import Navbar from "../../../components/Navbar";
 import TierBadge from "../../../components/TierBadge";
 import { supabaseClient } from "../../../lib/supabase";
@@ -61,14 +79,14 @@ function getEloTier(elo: number) {
 }
 
 /* ── Achievement definitions ─────────────────────────── */
-interface Achievement { emoji: string; label: string; earned: boolean; }
+interface Achievement { Icon: LucideIcon; label: string; earned: boolean; }
 function getAchievements(wins: number, losses: number, draws: number, elo: number): Achievement[] {
   const total = wins + losses + draws;
   return [
-    { emoji: "🎯", label: "First Win", earned: wins >= 1 },
-    { emoji: "🔥", label: "On Fire", earned: wins >= 10 },
-    { emoji: "⚡", label: "Centurion", earned: total >= 100 },
-    { emoji: "🏆", label: "Champion", earned: elo >= 1400 },
+    { Icon: Target, label: "First Win", earned: wins >= 1 },
+    { Icon: Flame, label: "On Fire", earned: wins >= 10 },
+    { Icon: Zap, label: "Centurion", earned: total >= 100 },
+    { Icon: Trophy, label: "Champion", earned: elo >= 1400 },
   ];
 }
 
@@ -91,6 +109,7 @@ export default function PublicProfilePage() {
 
   const [isFriend, setIsFriend] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [pendingFriendRequestId, setPendingFriendRequestId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [challengeLoading, setChallengeLoading] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
@@ -122,15 +141,17 @@ export default function PublicProfilePage() {
       if (uid && uid !== p.id) {
         const [friendCheck, reqCheck, inviteCheck] = await Promise.all([
           supabaseClient.from("friends").select("friend_id").eq("user_id", uid).eq("friend_id", p.id).maybeSingle(),
-          supabaseClient.from("friend_requests").select("id").or(`and(sender_id.eq.${uid},receiver_id.eq.${p.id}),and(sender_id.eq.${p.id},receiver_id.eq.${uid})`).eq("status", "pending").maybeSingle(),
+          supabaseClient.from("friend_requests").select("id, sender_id, receiver_id").or(`and(sender_id.eq.${uid},receiver_id.eq.${p.id}),and(sender_id.eq.${p.id},receiver_id.eq.${uid})`).eq("status", "pending").maybeSingle(),
           supabaseClient.from("game_invites").select("id").eq("sender_id", uid).eq("receiver_id", p.id).eq("status", "pending").maybeSingle()
         ]);
         setIsFriend(!!friendCheck.data);
         setHasPendingRequest(!!reqCheck.data);
+        setPendingFriendRequestId(reqCheck.data?.sender_id === uid ? reqCheck.data.id : null);
         setPendingInviteId(inviteCheck.data?.id ?? null);
       } else {
         setIsFriend(false);
         setHasPendingRequest(false);
+        setPendingFriendRequestId(null);
         setPendingInviteId(null);
       }
 
@@ -154,17 +175,28 @@ export default function PublicProfilePage() {
     } finally { setLoading(false); }
   }, [username]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [load]);
 
   useEffect(() => {
     if (!profile?.id) return;
     const channel = supabaseClient
-      .channel(`public_profile_${profile.id}`)
+      .channel(`public_profile_${profile.id}_${viewerId ?? "anon"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${profile.id}` }, () => { void load(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_invites" }, () => { void load(); })
-      .subscribe();
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_invites" }, () => { void load(); });
+
+    if (viewerId) {
+      channel
+        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `sender_id=eq.${viewerId}` }, () => { void load(); })
+        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${viewerId}` }, () => { void load(); })
+        .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${viewerId}` }, () => { void load(); });
+    }
+
+    channel.subscribe();
     return () => { void supabaseClient.removeChannel(channel); };
-  }, [profile?.id, load]);
+  }, [profile?.id, viewerId, load]);
 
   function handleCopyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
@@ -179,15 +211,42 @@ export default function PublicProfilePage() {
       setActionLoading(true);
       const { error: err } = await supabaseClient.rpc("send_friend_request", { input_receiver_id: profile.id });
       if (err) {
-        if (err.message.includes("already_friends")) setIsFriend(true);
-        else if (err.message.includes("request_already_exists")) setHasPendingRequest(true);
-        else throw err;
+        if (err.message.includes("already_friends")) {
+          setIsFriend(true);
+          setHasPendingRequest(false);
+          setPendingFriendRequestId(null);
+        } else if (err.message.includes("request_already_exists") || err.message.includes("request_already_pending")) {
+          setHasPendingRequest(true);
+          await load();
+        } else {
+          throw err;
+        }
       } else {
         setHasPendingRequest(true);
+        await load();
       }
     } catch (e: unknown) {
       console.error("Failed to add friend:", e);
       alert("Could not send friend request.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleCancelFriendRequest() {
+    if (!pendingFriendRequestId || actionLoading) return;
+    try {
+      setActionLoading(true);
+      const { error: err } = await supabaseClient.rpc("cancel_friend_request", {
+        input_request_id: pendingFriendRequestId,
+      });
+      if (err) throw err;
+      setHasPendingRequest(false);
+      setPendingFriendRequestId(null);
+      await load();
+    } catch (e: unknown) {
+      console.error("Failed to cancel friend request:", e);
+      alert("Could not cancel friend request.");
     } finally {
       setActionLoading(false);
     }
@@ -524,9 +583,14 @@ export default function PublicProfilePage() {
               <div className="pp-badges">
                 <TierBadge elo={profile.elo_rating} />
                 <span className="pp-elo-num">ELO {profile.elo_rating}</span>
-                {isFriend && <span className="pp-friend-pill">🤝 Friend</span>}
+                {isFriend && (
+                  <span className="pp-friend-pill">
+                    <Handshake size={13} aria-hidden="true" />
+                    Friend
+                  </span>
+                )}
                 <button type="button" className="pp-copy-btn" onClick={handleCopyLink} title="Copy profile link">
-                  {copied ? "✅" : "📋"}
+                  {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
                 </button>
               </div>
 
@@ -534,12 +598,14 @@ export default function PublicProfilePage() {
               <div className="pp-meta-row">
                 {rank !== null && (
                   <span className="pp-meta-item">
-                    🏅 Rank <strong>#{rank}</strong> <span className="pp-meta-dim">of {totalPlayers}</span>
+                    <Medal size={14} aria-hidden="true" />
+                    Rank <strong>#{rank}</strong> <span className="pp-meta-dim">of {totalPlayers}</span>
                   </span>
                 )}
                 {profile.created_at && (
                   <span className="pp-meta-item">
-                    📅 Member since <strong>{new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</strong>
+                    <CalendarDays size={14} aria-hidden="true" />
+                    Member since <strong>{new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</strong>
                   </span>
                 )}
               </div>
@@ -560,17 +626,24 @@ export default function PublicProfilePage() {
 
               {/* Achievement badges */}
               <div className="pp-achievements">
-                {achievements.map((a) => (
-                  <span key={a.label} className="pp-ach-pill" style={{ opacity: a.earned ? 1 : 0.35 }}>
-                    {a.emoji} {a.label}
-                  </span>
-                ))}
+                {achievements.map((a) => {
+                  const AchievementIcon = a.Icon;
+                  return (
+                    <span key={a.label} className="pp-ach-pill" style={{ opacity: a.earned ? 1 : 0.35 }}>
+                      <AchievementIcon size={13} aria-hidden="true" />
+                      {a.label}
+                    </span>
+                  );
+                })}
               </div>
 
               {/* Action buttons */}
               <div className="pp-hero-actions">
                 {isOwn ? (
-                  <button type="button" className="btn btn-secondary pp-edit" onClick={() => router.push("/profile")}>✏️ Edit profile</button>
+                  <button type="button" className="btn btn-secondary pp-edit" onClick={() => router.push("/profile")}>
+                    <Pencil size={16} aria-hidden="true" />
+                    Edit profile
+                  </button>
                 ) : (
                   <>
                     {isFriend ? (
@@ -583,25 +656,62 @@ export default function PublicProfilePage() {
                           disabled={actionLoading}
                           title="Remove from friends"
                         >
-                          {actionLoading ? "..." : "❌ Unfriend"}
+                          {actionLoading ? "..." : (
+                            <>
+                              <UserMinus size={16} aria-hidden="true" />
+                              Unfriend
+                            </>
+                          )}
                         </button>
                         {profile.status === "online" && (
                           pendingInviteId ? (
                             <button type="button" className="btn btn-ghost pp-edit" onClick={handleCancelInvite} disabled={challengeLoading}>
-                              {challengeLoading ? "..." : "Cancel"}
+                              {challengeLoading ? "..." : (
+                                <>
+                                  <X size={16} aria-hidden="true" />
+                                  Cancel
+                                </>
+                              )}
                             </button>
                           ) : (
                             <button type="button" className="btn btn-secondary pp-edit" onClick={handleChallenge} disabled={challengeLoading}>
-                              {challengeLoading ? "..." : "⚔️ Challenge"}
+                              {challengeLoading ? "..." : (
+                                <>
+                                  <Swords size={16} aria-hidden="true" />
+                                  Challenge
+                                </>
+                              )}
                             </button>
                           )
                         )}
                       </>
+                    ) : pendingFriendRequestId ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost pp-edit pp-danger-action"
+                        onClick={handleCancelFriendRequest}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? "..." : (
+                          <>
+                            <UserMinus size={16} aria-hidden="true" />
+                            Cancel request
+                          </>
+                        )}
+                      </button>
                     ) : hasPendingRequest ? (
-                      <button type="button" className="btn btn-ghost pp-edit" disabled>Request Sent</button>
+                      <button type="button" className="btn btn-ghost pp-edit" disabled>
+                        <UserPlus size={16} aria-hidden="true" />
+                        Request Pending
+                      </button>
                     ) : (
                       <button type="button" className="btn btn-secondary pp-edit" onClick={handleAddFriend} disabled={actionLoading}>
-                        {actionLoading ? "..." : "➕ Add Friend"}
+                        {actionLoading ? "..." : (
+                          <>
+                            <UserPlus size={16} aria-hidden="true" />
+                            Add Friend
+                          </>
+                        )}
                       </button>
                     )}
                   </>
@@ -612,7 +722,10 @@ export default function PublicProfilePage() {
 
           {/* ── Stats Section ── */}
           <section className="card pp-stats">
-            <h2 className="pp-sec-title">📊 Stats</h2>
+            <h2 className="pp-sec-title">
+              <BarChart3 size={18} aria-hidden="true" />
+              Stats
+            </h2>
 
             {/* W/L/D bar */}
             {totalGames > 0 && (
@@ -636,7 +749,10 @@ export default function PublicProfilePage() {
 
           {/* ── Match History ── */}
           <section className="card pp-history">
-            <h2 className="pp-sec-title">⚔️ Recent Matches</h2>
+            <h2 className="pp-sec-title">
+              <Swords size={18} aria-hidden="true" />
+              Recent Matches
+            </h2>
 
             {/* Tab filter */}
             <div className="pp-tabs">
@@ -715,7 +831,7 @@ export default function PublicProfilePage() {
         .pp-badges { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
         .pp-elo-num { font-family:var(--font-heading); font-weight:700; color:rgba(226,232,240,0.85); font-size:0.9rem; }
         .pp-friend-pill { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); color:#4ade80; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-family:var(--font-heading); font-weight:700; display:inline-flex; align-items:center; gap:4px; }
-        .pp-copy-btn { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.85rem; transition:all 0.2s; }
+        .pp-copy-btn { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; color:#e2e8f0; transition:all 0.2s; }
         .pp-copy-btn:hover { background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.3); }
 
         /* ELO Progress */
@@ -728,11 +844,19 @@ export default function PublicProfilePage() {
         .pp-achievements { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
         .pp-ach-pill { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); font-family:var(--font-heading); font-size:0.7rem; font-weight:600; color:#e2e8f0; transition:opacity 0.3s; white-space:nowrap; }
         .pp-hero-actions { margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
-        .pp-edit { margin-top:4px; }
+        .pp-edit { margin-top:4px; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+        .pp-danger-action { color:#f87171; border-color:rgba(248,113,113,0.32); background:rgba(248,113,113,0.06); }
+        .pp-danger-action:hover:not(:disabled) { color:#fecaca; border-color:rgba(248,113,113,0.48); background:rgba(248,113,113,0.1); }
+        .pp-friend-pill :global(svg),
+        .pp-copy-btn :global(svg),
+        .pp-meta-item :global(svg),
+        .pp-ach-pill :global(svg),
+        .pp-edit :global(svg),
+        .pp-sec-title :global(svg) { flex-shrink:0; }
 
         /* ── Stats ── */
         .pp-stats, .pp-history { padding:18px 20px; }
-        .pp-sec-title { margin:0 0 14px; font-family:var(--font-heading); font-size:1.05rem; color:#f8fafc; }
+        .pp-sec-title { margin:0 0 14px; display:flex; align-items:center; gap:8px; font-family:var(--font-heading); font-size:1.05rem; color:#f8fafc; }
 
         .pp-wld-wrap { margin-bottom:14px; }
         .pp-wld-bar { display:flex; width:100%; height:8px; border-radius:4px; overflow:hidden; background:rgba(255,255,255,0.06); }

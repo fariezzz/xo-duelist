@@ -2,6 +2,17 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  ArrowRight,
+  DoorOpen,
+  Gamepad2,
+  Globe,
+  Link2,
+  Lock,
+  RefreshCw,
+  Sparkles,
+  Swords,
+} from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 
@@ -138,7 +149,7 @@ export default function LobbyPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
             <div>
               <h1 className="heading" style={{ fontSize: '1.8rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.5rem' }}>⚔️</span> Lobby
+                <Swords size={24} strokeWidth={2.35} aria-hidden="true" /> Lobby
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
                 Create a room or join one — public rooms are visible below.
@@ -182,8 +193,10 @@ export default function LobbyPage() {
                   width: '42px', height: '42px', borderRadius: '12px',
                   background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(245,158,11,0.12))',
                   border: '1px solid rgba(124,58,237,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0,
-                }}>🎮</div>
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c4b5fd', flexShrink: 0,
+                }}>
+                  <Gamepad2 size={22} strokeWidth={2.35} aria-hidden="true" />
+                </div>
                 <div>
                   <h2 className="heading" style={{ fontSize: '1.1rem', margin: 0 }}>Create Room</h2>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', margin: 0 }}>Private or public</p>
@@ -193,9 +206,14 @@ export default function LobbyPage() {
                 className="btn btn-primary"
                 onClick={() => setShowCreateModal(true)}
                 disabled={loading}
-                style={{ width: '100%', marginTop: 'auto', padding: '12px', fontWeight: 700 }}
+                style={{ width: '100%', marginTop: 'auto', padding: '12px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
               >
-                {loading ? 'Creating...' : '✨ Create Room'}
+                {loading ? 'Creating...' : (
+                  <>
+                    <Sparkles size={16} strokeWidth={2.35} aria-hidden="true" />
+                    Create Room
+                  </>
+                )}
               </button>
             </div>
 
@@ -211,8 +229,10 @@ export default function LobbyPage() {
                   width: '42px', height: '42px', borderRadius: '12px',
                   background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(239,68,68,0.08))',
                   border: '1px solid rgba(245,158,11,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0,
-                }}>🔗</div>
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fbbf24', flexShrink: 0,
+                }}>
+                  <Link2 size={22} strokeWidth={2.35} aria-hidden="true" />
+                </div>
                 <div>
                   <h2 className="heading" style={{ fontSize: '1.1rem', margin: 0 }}>Join Room</h2>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', margin: 0 }}>Enter 6-char code</p>
@@ -238,7 +258,7 @@ export default function LobbyPage() {
                   disabled={loading || !roomCode}
                   style={{ padding: '10px 18px', fontWeight: 700, flexShrink: 0 }}
                 >
-                  {loading ? '...' : '→'}
+                  {loading ? '...' : <ArrowRight size={18} strokeWidth={2.35} aria-hidden="true" />}
                 </button>
               </div>
             </div>
@@ -248,14 +268,16 @@ export default function LobbyPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <h2 className="heading" style={{ fontSize: '1.15rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🌐 Public Rooms
+                <Globe size={18} strokeWidth={2.35} aria-hidden="true" />
+                Public Rooms
               </h2>
               <button
                 className="btn btn-ghost"
                 onClick={fetchPublicRooms}
-                style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+                style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                ↻ Refresh
+                <RefreshCw size={14} strokeWidth={2.35} aria-hidden="true" />
+                Refresh
               </button>
             </div>
 
@@ -265,7 +287,9 @@ export default function LobbyPage() {
               </div>
             ) : publicRooms.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: '36px 24px' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '8px', opacity: 0.5 }}>🏜️</div>
+                <div style={{ width: 48, height: 48, margin: '0 auto 8px', opacity: 0.55, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', background: 'rgba(148,163,184,0.1)', color: '#94a3b8' }}>
+                  <Globe size={28} strokeWidth={2.35} aria-hidden="true" />
+                </div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '4px', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>No public rooms available</p>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', opacity: 0.6, margin: 0 }}>Create a public room and wait for challengers!</p>
               </div>
@@ -339,9 +363,14 @@ export default function LobbyPage() {
                       className="btn btn-success"
                       onClick={() => joinPublicRoom(room.id)}
                       disabled={!!joiningRoomId}
-                      style={{ padding: '8px 18px', fontSize: '0.85rem', flexShrink: 0, fontWeight: 700 }}
+                      style={{ padding: '8px 18px', fontSize: '0.85rem', flexShrink: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      {joiningRoomId === room.id ? '...' : '⚔️ Join'}
+                      {joiningRoomId === room.id ? '...' : (
+                        <>
+                          <Swords size={15} strokeWidth={2.35} aria-hidden="true" />
+                          Join
+                        </>
+                      )}
                     </button>
                   </div>
                 ))}
@@ -424,10 +453,10 @@ export default function LobbyPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '1.5rem',
+                  color: 'var(--accent-gold-light)',
                   flexShrink: 0,
                 }}>
-                  🔒
+                  <Lock size={26} strokeWidth={2.35} aria-hidden="true" />
                 </div>
                 <div>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '4px', color: 'var(--accent-gold-light)' }}>
@@ -465,10 +494,10 @@ export default function LobbyPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '1.5rem',
+                  color: 'var(--accent-violet-light)',
                   flexShrink: 0,
                 }}>
-                  🌐
+                  <Globe size={26} strokeWidth={2.35} aria-hidden="true" />
                 </div>
                 <div>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '4px', color: 'var(--accent-violet-light)' }}>
@@ -484,8 +513,9 @@ export default function LobbyPage() {
             <button
               className="btn btn-ghost"
               onClick={() => setShowCreateModal(false)}
-              style={{ width: '100%', marginTop: '16px' }}
+              style={{ width: '100%', marginTop: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
             >
+              <DoorOpen size={16} strokeWidth={2.35} aria-hidden="true" />
               Cancel
             </button>
           </div>

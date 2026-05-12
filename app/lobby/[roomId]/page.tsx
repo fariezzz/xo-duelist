@@ -2,6 +2,22 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import {
+  Ban,
+  Check,
+  CheckCircle2,
+  Copy,
+  DoorOpen,
+  Globe,
+  Hourglass,
+  Lock,
+  LogOut,
+  Radio,
+  Rocket,
+  Square,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
 import { useLobbyPresence, type LobbyPresenceEvent } from '../../../hooks/useLobbyPresence';
@@ -159,15 +175,7 @@ function LobbyPlayerCard({
   </>
 ) : ready ? (
   <>
-    <span
-      style={{
-        color: "#10b981",
-        fontSize: "0.95rem",
-        lineHeight: 1,
-      }}
-    >
-      ✓
-    </span>
+    <CheckCircle2 size={15} strokeWidth={2.35} aria-hidden="true" />
     Ready
   </>
 ) : (
@@ -436,7 +444,9 @@ export default function LobbyRoomPage() {
       <Navbar />
       <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', paddingTop: '24px', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
         <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', borderColor: 'rgba(239,68,68,0.2)' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚫</div>
+          <div style={{ width: 58, height: 58, margin: '0 auto 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '18px', color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <Ban size={32} strokeWidth={2.35} aria-hidden="true" />
+          </div>
           <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Room Cancelled</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '24px', lineHeight: 1.5 }}>
             {meId && room?.player1_id === meId
@@ -469,7 +479,9 @@ export default function LobbyRoomPage() {
       <Navbar />
       <div className="page-container animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', paddingTop: '24px', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
         <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', borderColor: 'rgba(245,158,11,0.2)' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚶</div>
+          <div style={{ width: 58, height: 58, margin: '0 auto 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '18px', color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <LogOut size={32} strokeWidth={2.35} aria-hidden="true" />
+          </div>
           <h2 className="heading" style={{ fontSize: '1.5rem', marginBottom: '8px' }}>Left Room</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '24px', lineHeight: 1.5 }}>
             You have left the room. You can join another room or create a new one.
@@ -532,7 +544,8 @@ export default function LobbyRoomPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
             <div>
               <h1 className="heading" style={{ fontSize: '1.6rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.4rem' }}>⏳</span> Waiting Room
+                <Hourglass size={22} strokeWidth={2.35} aria-hidden="true" />
+                Waiting Room
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
                 {isPublicRoom ? 'Visible in lobby — anyone can join.' : 'Share the code to invite a friend.'}
@@ -547,7 +560,17 @@ export default function LobbyRoomPage() {
                 : { background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }
               ),
             }}>
-              {isPublicRoom ? '🌐 Public' : '🔒 Private'}
+              {isPublicRoom ? (
+                <>
+                  <Globe size={14} strokeWidth={2.35} aria-hidden="true" />
+                  Public
+                </>
+              ) : (
+                <>
+                  <Lock size={14} strokeWidth={2.35} aria-hidden="true" />
+                  Private
+                </>
+              )}
             </span>
           </div>
 
@@ -578,8 +601,18 @@ export default function LobbyRoomPage() {
                       color: '#a78bfa', textShadow: '0 0 20px rgba(124,58,237,0.3)',
                     }}>{roomCode}</div>
                   </div>
-                  <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '8px 14px', fontSize: '0.82rem' }}>
-                    {copied ? '✓ Copied' : '📋 Copy'}
+                  <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    {copied ? (
+                      <>
+                        <Check size={14} strokeWidth={2.35} aria-hidden="true" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={14} strokeWidth={2.35} aria-hidden="true" />
+                        Copy
+                      </>
+                    )}
                   </button>
                 </div>
               ) : (
@@ -589,7 +622,7 @@ export default function LobbyRoomPage() {
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: 'var(--text-muted)',
                 }}>
-                  <span style={{ fontSize: '1rem' }}>📡</span>
+                  <Radio size={16} strokeWidth={2.35} aria-hidden="true" />
                   Visible in the lobby — anyone can join
                 </div>
               )}
@@ -598,12 +631,15 @@ export default function LobbyRoomPage() {
               <div style={{ padding: '16px 20px 12px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
                   {[
-                    { label: 'Status', value: room.status, color: room.status === 'waiting' ? '#fbbf24' : '#10b981' },
-                    { label: 'Opponent', value: room.player2_id ? 'Joined ✓' : 'Waiting...', color: room.player2_id ? '#10b981' : '#94a3b8' },
+                    { label: 'Status', value: room.status, color: room.status === 'waiting' ? '#fbbf24' : '#10b981', joined: false },
+                    { label: 'Opponent', value: room.player2_id ? 'Joined' : 'Waiting...', color: room.player2_id ? '#10b981' : '#94a3b8', joined: !!room.player2_id },
                   ].map((item, i) => (
                     <div key={i} style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
                       <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>{item.label}</div>
-                      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', color: item.color, textTransform: 'capitalize' }}>{item.value}</div>
+                      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', color: item.color, textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        {item.joined && <Check size={14} strokeWidth={2.35} aria-hidden="true" />}
+                        {item.value}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -674,7 +710,17 @@ export default function LobbyRoomPage() {
                     <span className="animate-spin-slow" style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block' }} />
                     Updating...
                   </span>
-                ) : myReady ? '⬜ Set Not Ready' : '✅ Set Ready'}
+                ) : myReady ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Square size={17} strokeWidth={2.35} aria-hidden="true" />
+                    Set Not Ready
+                  </span>
+                ) : (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <CheckCircle2 size={17} strokeWidth={2.35} aria-hidden="true" />
+                    Set Ready
+                  </span>
+                )}
               </button>
 
               {/* Start Game — only host */}
@@ -689,7 +735,12 @@ export default function LobbyRoomPage() {
                     ...(canStart ? { boxShadow: '0 4px 24px rgba(124,58,237,0.35)', animation: 'pulse-glow 2s ease-in-out infinite' } : {}),
                   }}
                 >
-                  {startLoading ? 'Starting...' : '🚀 Start Game'}
+                  {startLoading ? 'Starting...' : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <Rocket size={17} strokeWidth={2.35} aria-hidden="true" />
+                      Start Game
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -735,7 +786,10 @@ export default function LobbyRoomPage() {
                     color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)',
                   }}
                 >
-                  ✕ Cancel Room
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                    <X size={15} strokeWidth={2.35} aria-hidden="true" />
+                    Cancel Room
+                  </span>
                 </button>
               ) : (
                 <button
@@ -746,7 +800,10 @@ export default function LobbyRoomPage() {
                     color: '#f59e0b', borderColor: 'rgba(245,158,11,0.2)',
                   }}
                 >
-                  🚪 Exit Room
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                    <DoorOpen size={15} strokeWidth={2.35} aria-hidden="true" />
+                    Exit Room
+                  </span>
                 </button>
               )}
             </div>
@@ -801,8 +858,23 @@ export default function LobbyRoomPage() {
               textAlign: 'center',
             }}
           >
-            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>
-              {showConfirm === 'cancel' ? '⚠️' : '🚶'}
+            <div style={{
+              width: 54,
+              height: 54,
+              margin: '0 auto 12px',
+              borderRadius: '16px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: showConfirm === 'cancel' ? '#f59e0b' : '#fbbf24',
+              background: showConfirm === 'cancel' ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.1)',
+              border: '1px solid rgba(245,158,11,0.22)',
+            }}>
+              {showConfirm === 'cancel' ? (
+                <TriangleAlert size={30} strokeWidth={2.35} aria-hidden="true" />
+              ) : (
+                <LogOut size={30} strokeWidth={2.35} aria-hidden="true" />
+              )}
             </div>
             <h2 className="heading" style={{ fontSize: '1.3rem', marginBottom: '8px' }}>
               {showConfirm === 'cancel' ? 'Cancel Room?' : 'Leave Room?'}

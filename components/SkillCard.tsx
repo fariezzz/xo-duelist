@@ -1,12 +1,13 @@
 "use client";
 import React from 'react';
 import { SKILL_META, type SkillType } from '../lib/mechanics';
+import { PowerCellIcon, SkillIcon } from './MechanicIcon';
 
 type Props = {
   skill: SkillType | null;
   onUseSkill: () => void;
   disabled?: boolean;
-  isNew?: boolean; // flash animation when skill just received
+  isNew?: boolean;
 };
 
 export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props) {
@@ -22,8 +23,13 @@ export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props)
         fontFamily: 'var(--font-heading)',
         fontSize: '0.85rem',
         opacity: 0.6,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
       }}>
-        No skill yet — find a Power Cell! ✦
+        <PowerCellIcon size={16} />
+        No skill yet - find a Power Cell!
       </div>
     );
   }
@@ -43,19 +49,19 @@ export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props)
       boxShadow: isNew ? '0 0 25px rgba(245,158,11,0.3)' : '0 0 15px rgba(124,58,237,0.1)',
       transition: 'all 0.3s ease',
     }}>
-      {/* Icon */}
       <div style={{
-        fontSize: '1.8rem',
-        width: '44px', height: '44px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '44px',
+        height: '44px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         background: 'rgba(124,58,237,0.15)',
         borderRadius: '10px',
         flexShrink: 0,
       }}>
-        {meta.icon}
+        <SkillIcon skill={skill} size={24} />
       </div>
 
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontFamily: 'var(--font-heading)', fontWeight: 700,
@@ -70,7 +76,6 @@ export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props)
         </div>
       </div>
 
-      {/* Use button */}
       <button
         className="btn btn-primary"
         onClick={onUseSkill}

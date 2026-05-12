@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { Bot, Clock, Flag, Gamepad2, LoaderCircle, ShieldAlert, Swords, TriangleAlert, X } from 'lucide-react';
 import { supabaseClient } from '../../../lib/supabase';
 import Board from '../../../components/Board';
 import Timer from '../../../components/Timer';
@@ -13,6 +14,7 @@ import RankUpOverlay from '../../../components/notifications/RankUpOverlay';
 import BattleIntroOverlay, { shouldShowBattleIntro } from '../../../components/notifications/BattleIntroOverlay';
 import GameHUD from '../../../components/GameHUD';
 import SkillCard from '../../../components/SkillCard';
+import { CurseIcon, PowerCellIcon, SkillIcon } from '../../../components/MechanicIcon';
 import { useNotification } from '../../../hooks/useNotification';
 import { useScopedSessionLock } from '../../../hooks/useScopedSessionLock';
 import { checkWinner4, isDraw } from '../../../lib/gameLogic';
@@ -251,7 +253,7 @@ export default function GameRoom() {
       // Show starting banner
       const sym = data.player1_id === uid ? 'X' : 'O';
       const aiLabel = data.is_vs_ai ? ' (VS AI)' : '';
-      showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: '🎮', duration: 2500 });
+      showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: <Gamepad2 size={22} />, duration: 2500 });
     })();
   }, [roomId, router, setStatus]);
 
@@ -279,7 +281,7 @@ export default function GameRoom() {
           setIsShuffling(true);
           soundsRef.current.playShuffle();
           setTimeout(() => setIsShuffling(false), 1200);
-          showToastRef.current({ type: 'info', title: '🌀 Board Shuffled!', message: 'All positions have been randomized!' });
+          showToastRef.current({ type: 'info', title: 'Board Shuffled!', message: 'All positions have been randomized!' });
         }
 
         setTurnTimerKey((k) => k + 1);
@@ -300,9 +302,9 @@ export default function GameRoom() {
             if (newRow.player1_id === meId) soundsRef.current.playPlaceO(); // Opponent is O
             else soundsRef.current.playPlaceX(); // Opponent is X
 
-            showBannerRef.current({ type: 'info', message: "Your Turn!", icon: '⚔️', pulse: true, duration: 2500 });
+            showBannerRef.current({ type: 'info', message: "Your Turn!", icon: <Swords size={22} />, pulse: true, duration: 2500 });
           } else {
-            showBannerRef.current({ type: 'info', message: "Opponent's Turn", icon: '⏳', duration: 2000 });
+            showBannerRef.current({ type: 'info', message: "Opponent's Turn", icon: <Clock size={22} />, duration: 2000 });
           }
         }
 
@@ -419,8 +421,8 @@ export default function GameRoom() {
           const meta = SKILL_META[usedSkill];
           showBannerRef.current({
             type: 'warning',
-            message: `🤖 AI used ${meta.icon} ${meta.name}!`,
-            icon: '🤖',
+            message: `AI used ${meta.name}!`,
+            icon: <Bot size={22} />,
             duration: 3000,
           });
           return;
@@ -454,8 +456,8 @@ export default function GameRoom() {
             // Show power cell banner to human
             showBannerRef.current({
               type: 'info',
-              message: `🤖 AI claimed a Power Cell! (${SKILL_META[skill].icon} ${SKILL_META[skill].name})`,
-              icon: '✦',
+              message: `AI claimed a Power Cell! (${SKILL_META[skill].name})`,
+              icon: <PowerCellIcon size={22} />,
               duration: 2500,
             });
           }
@@ -475,8 +477,8 @@ export default function GameRoom() {
           update[aiCurseKey] = JSON.stringify(curse);
           showBannerRef.current({
             type: 'info',
-            message: `🤖 AI got cursed! ${CURSE_META[curseType].name}`,
-            icon: '💀',
+            message: `AI got cursed! ${CURSE_META[curseType].name}`,
+            icon: <CurseIcon curse={curseType} size={22} />,
             duration: 2500,
           });
         }
@@ -694,7 +696,7 @@ export default function GameRoom() {
       setBoard(update.board_state || newBoard);
       setSkillTargetMode(false); setActiveSkillUse(null); setSkillTargetCells([]);
       playSkillSound(activeSkillUse);
-      showToast({ type: 'success', title: `${SKILL_META[activeSkillUse].icon} ${SKILL_META[activeSkillUse].name} Used!`, message: SKILL_META[activeSkillUse].desc });
+      showToast({ type: 'success', title: `${SKILL_META[activeSkillUse].name} Used!`, message: SKILL_META[activeSkillUse].desc });
       await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
     } catch {
       turnSubmitLockRef.current = false;
@@ -748,7 +750,7 @@ export default function GameRoom() {
           update[mySkillKey] = skill;
           setNewSkillFlag(true); setTimeout(() => setNewSkillFlag(false), 2000);
           soundsRef.current.playPowerCell();
-          showToast({ type: 'success', title: '✦ Power Cell Claimed!', message: `You got: ${SKILL_META[skill].icon} ${SKILL_META[skill].name}` });
+          showToast({ type: 'success', title: 'Power Cell Claimed!', message: `You got: ${SKILL_META[skill].name}` });
         } else {
           showToast({ type: 'warning', title: 'Power Cell', message: 'You already have a skill!' });
         }
@@ -768,7 +770,7 @@ export default function GameRoom() {
         const curse = buildCurse(curseType);
         update[myCurseKey] = JSON.stringify(curse);
         playCurseSound(curseType);
-        showBanner({ type: 'error', message: `💀 CURSED! ${CURSE_META[curseType].name}: ${CURSE_META[curseType].desc}`, icon: '💀', duration: 3500 });
+        showBanner({ type: 'error', message: `CURSED! ${CURSE_META[curseType].name}: ${CURSE_META[curseType].desc}`, icon: <CurseIcon curse={curseType} size={22} />, duration: 3500 });
       }
 
       // Tick down my curse (if not just applied)
@@ -811,7 +813,7 @@ export default function GameRoom() {
         setIsShuffling(true);
         soundsRef.current.playShuffle();
         setTimeout(() => setIsShuffling(false), 1200);
-        showToast({ type: 'info', title: '🌀 Board Shuffled!', message: 'All positions have been randomized!' });
+        showToast({ type: 'info', title: 'Board Shuffled!', message: 'All positions have been randomized!' });
       }
 
       await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
@@ -832,7 +834,7 @@ export default function GameRoom() {
       const isBlind = myCurse?.type === 'BLIND' && myCurse.turns_remaining > 0;
       if (isBlind && board[i] !== null) {
         setShakingCell(i);
-        showToast({ type: 'error', title: '🌑 Blind!', message: 'That cell is already occupied!' });
+        showToast({ type: 'error', title: 'Blind!', message: 'That cell is already occupied!' });
         setTimeout(() => setShakingCell(null), 600);
         return;
       }
@@ -956,7 +958,7 @@ export default function GameRoom() {
   const onTimerWarning = useCallback((secondsLeft: number) => {
     if (!timerWarningShown.current && secondsLeft <= 5) {
       timerWarningShown.current = true;
-      showToastRef.current({ type: 'warning', title: '⚠ Time Running Out!', message: `Only ${secondsLeft} seconds left!`, duration: 3000 });
+      showToastRef.current({ type: 'warning', title: 'Time Running Out!', message: `Only ${secondsLeft} seconds left!`, duration: 3000 });
     }
   }, []);
 
@@ -971,7 +973,7 @@ export default function GameRoom() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <div style={{ textAlign: 'center' }}>
-          <div className="animate-spin-slow" style={{ width: 40, height: 40, border: '3px solid rgba(124,58,237,0.2)', borderTopColor: '#7c3aed', borderRadius: '50%', margin: '0 auto 16px' }} />
+          <LoaderCircle className="animate-spin-slow" size={40} color="#7c3aed" style={{ margin: '0 auto 16px' }} />
           <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)' }}>Loading game...</span>
         </div>
       </div>
@@ -1003,7 +1005,8 @@ export default function GameRoom() {
                 boxShadow: '0 0 24px rgba(245, 158, 11, 0.16)',
               }}
             >
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#f59e0b', marginBottom: '6px' }}>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: '#f59e0b', marginBottom: '6px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldAlert size={18} />
                 This session is currently read-only
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px' }}>
@@ -1016,6 +1019,7 @@ export default function GameRoom() {
                   await lock.takeOver();
                 }}
               >
+                {lock.isTakingOver ? <LoaderCircle className="animate-spin-slow" size={15} /> : <ShieldAlert size={15} />}
                 {lock.isTakingOver ? 'Taking over...' : 'Take Over Session'}
               </button>
             </div>
@@ -1034,11 +1038,29 @@ export default function GameRoom() {
                   color: isMyTurn ? '#a78bfa' : 'var(--text-muted)',
                 }}
               >
-                {room.status === 'ongoing'
-                  ? isMyTurn
-                    ? 'Your Turn'
-                    : (room.is_vs_ai && aiThinking ? '🤖 AI is thinking...' : "Opponent's Turn")
-                  : 'Game Over'}
+                {room.status === 'ongoing' ? (
+                  isMyTurn ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <Swords size={18} />
+                      Your Turn
+                    </span>
+                  ) : room.is_vs_ai && aiThinking ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <Bot size={18} />
+                      AI is thinking...
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <Clock size={18} />
+                      {"Opponent's Turn"}
+                    </span>
+                  )
+                ) : (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Flag size={18} />
+                    Game Over
+                  </span>
+                )}
               </div>
 
               {/* Player Cards */}
@@ -1061,8 +1083,13 @@ export default function GameRoom() {
                         color: '#a78bfa',
                         fontFamily: 'var(--font-heading)',
                         fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
                       }}>
-                        🤖 {SKILL_META[oppSkill].icon} Skill Ready
+                        <Bot size={14} />
+                        <SkillIcon skill={oppSkill} size={14} />
+                        Skill Ready
                       </span>
                     </div>
                   );
@@ -1096,10 +1123,12 @@ export default function GameRoom() {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                    <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <Clock size={13} />
                       You timeout: {myTimeouts}/2
                     </span>
-                    <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                    <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <Clock size={13} />
                       {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
                     </span>
                   </div>
@@ -1107,17 +1136,19 @@ export default function GameRoom() {
               )}
 
               {fumbleWarning && (
-                <div className="animate-fumble-shake" style={{ textAlign: 'center', color: '#ef4444', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem' }}>
+                <div className="animate-fumble-shake" style={{ textAlign: 'center', color: '#ef4444', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <CurseIcon curse="FUMBLE" size={15} />
                   FUMBLE! Your move was placed randomly.
                 </div>
               )}
 
               {skillTargetMode && (
                 <div style={{ textAlign: 'center' }}>
-                  <span style={{ color: '#a78bfa', fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: '0.86rem' }}>
-                    Select target for {SKILL_META[activeSkillUse!].icon} {SKILL_META[activeSkillUse!].name}
+                  <span style={{ color: '#a78bfa', fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <SkillIcon skill={activeSkillUse!} size={15} />
+                    Select target for {SKILL_META[activeSkillUse!].name}
                   </span>
-                  <button className="btn btn-ghost" onClick={cancelSkillTarget} style={{ marginLeft: '8px', padding: '4px 10px', fontSize: '0.78rem' }}>Cancel</button>
+                  <button className="btn btn-ghost" onClick={cancelSkillTarget} style={{ marginLeft: '8px', padding: '4px 10px', fontSize: '0.78rem' }}><X size={13} />Cancel</button>
                 </div>
               )}
 
@@ -1138,6 +1169,7 @@ export default function GameRoom() {
                     onClick={() => setShowSurrenderConfirm(true)}
                     style={{ minWidth: '180px' }}
                   >
+                    <Flag size={16} />
                     Surrender
                   </button>
                   : null
@@ -1170,10 +1202,12 @@ export default function GameRoom() {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                    <span style={{ color: myTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <Clock size={13} />
                       You timeout: {myTimeouts}/2
                     </span>
-                    <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)' }}>
+                    <span style={{ color: oppTimeouts >= 1 ? '#f59e0b' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <Clock size={13} />
                       {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
                     </span>
                   </div>
@@ -1233,8 +1267,13 @@ export default function GameRoom() {
                 fontSize: '1.1rem',
                 color: '#ef4444',
                 marginBottom: '8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
               }}
             >
+              <TriangleAlert size={20} />
               Surrender this match?
             </div>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem', marginBottom: '16px' }}>
@@ -1262,6 +1301,7 @@ export default function GameRoom() {
                 }}
                 style={{ minWidth: '120px' }}
               >
+                <Flag size={15} />
                 Yes, Surrender
               </button>
               <button
@@ -1269,6 +1309,7 @@ export default function GameRoom() {
                 onClick={() => setShowSurrenderConfirm(false)}
                 style={{ minWidth: '110px' }}
               >
+                <X size={15} />
                 Cancel
               </button>
             </div>

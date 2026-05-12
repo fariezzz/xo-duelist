@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Swords } from "lucide-react";
 
 type ArenaCardProps = {
   onStartMatch: () => void;
@@ -21,7 +22,9 @@ export default function ArenaCard({ onStartMatch, disabled = false }: ArenaCardP
       <button className="arena-start-btn" onClick={onStartMatch} disabled={disabled} aria-label="Start ranked match">
         <span className="arena-ring" />
         <span className="arena-core">
-          <span className="arena-icon">{"\u2694"}</span>
+          <span className="arena-icon">
+            <Swords strokeWidth={2.35} aria-hidden="true" />
+          </span>
           <span className="arena-start-text">START</span>
           <span className="arena-start-subtext">MATCH</span>
         </span>
@@ -146,10 +149,18 @@ export default function ArenaCard({ onStartMatch, disabled = false }: ArenaCardP
         }
 
         .arena-icon {
-          font-size: 2rem;
-          line-height: 1;
+          width: 2rem;
+          height: 2rem;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           color: #ede9fe;
           transform: translateY(-2px);
+        }
+
+        .arena-icon :global(svg) {
+          width: 100%;
+          height: 100%;
         }
 
         .arena-start-text {
@@ -234,7 +245,8 @@ export default function ArenaCard({ onStartMatch, disabled = false }: ArenaCardP
           }
 
           .arena-icon {
-            font-size: 1.65rem;
+            width: 1.65rem;
+            height: 1.65rem;
           }
 
           .arena-start-text {
@@ -286,7 +298,8 @@ export default function ArenaCard({ onStartMatch, disabled = false }: ArenaCardP
           }
 
           .arena-icon {
-            font-size: 1.2rem;
+            width: 1.2rem;
+            height: 1.2rem;
           }
 
           .arena-start-text {

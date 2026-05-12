@@ -1,6 +1,17 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  BarChart3,
+  Check,
+  CircleAlert,
+  Eye,
+  Link2,
+  ShieldAlert,
+  Trash2,
+  User,
+} from "lucide-react";
 import Navbar from "../../components/Navbar";
 import AvatarUpload from "../../components/profile/AvatarUpload";
 import ProfileStats from "../../components/profile/ProfileStats";
@@ -111,13 +122,16 @@ export default function ProfilePage() {
         <Navbar />
         <div className="page-container animate-fade-in" style={{ padding: "32px 24px", paddingTop: "calc(var(--navbar-height) + 32px)" }}>
           <div className="card" style={{ maxWidth: "500px", margin: "0 auto", textAlign: "center", padding: "40px" }}>
-            <div style={{ fontSize: "2rem", marginBottom: "12px" }}>😕</div>
+            <div style={{ display: "inline-flex", marginBottom: "12px", color: "#f87171" }}>
+              <CircleAlert size={36} aria-hidden="true" />
+            </div>
             <h2 style={{ fontFamily: "var(--font-heading)", fontWeight: 700, color: "#ef4444", marginBottom: "8px" }}>
               Failed to load profile
             </h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "20px" }}>{error}</p>
             <button className="btn btn-primary" onClick={() => router.push("/dashboard")}>
-              ← Back to Home
+              <ArrowLeft size={16} aria-hidden="true" />
+              Back to Home
             </button>
           </div>
         </div>
@@ -131,11 +145,7 @@ export default function ProfilePage() {
   const lPct = totalGames > 0 ? (profile.losses / totalGames) * 100 : 0;
   const dPct = totalGames > 0 ? (profile.draws / totalGames) * 100 : 100;
   const { current: curTier, next: nextTier, pct: tierPct } = getEloTier(profile.elo_rating);
-  const hasEmailIdentity = profile.linkedAccounts.some((account) => account.provider === "email" && !!account.identityId);
-  const hasOauthIdentity = profile.linkedAccounts.some((account) =>
-    ["google", "github", "discord"].includes(account.provider) && !!account.identityId
-  );
-  const needsPassword = hasOauthIdentity && !hasEmailIdentity;
+  const needsPassword = !profile.hasPassword;
 
   return (
     <>
@@ -143,7 +153,10 @@ export default function ProfilePage() {
       <div className="animate-fade-in mp-page">
         <div className="mp-inner">
           {/* Header */}
-          <h1 className="heading mp-heading">👤 My Profile</h1>
+          <h1 className="heading mp-heading">
+            <User size={28} aria-hidden="true" />
+            My Profile
+          </h1>
           <p className="mp-subtitle">
             Manage your account settings and personal information.
           </p>
@@ -211,14 +224,25 @@ export default function ProfilePage() {
                     className="btn btn-secondary"
                     onClick={() => router.push("/profile/" + profile.username)}
                   >
-                    👁 View Public Profile
+                    <Eye size={16} aria-hidden="true" />
+                    View Public Profile
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost mp-copy-btn"
                     onClick={handleCopyLink}
                   >
-                    {copied ? "✅ Copied!" : "🔗 Copy Profile Link"}
+                    {copied ? (
+                      <>
+                        <Check size={16} aria-hidden="true" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Link2 size={16} aria-hidden="true" />
+                        Copy Profile Link
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -226,15 +250,10 @@ export default function ProfilePage() {
               {/* ── Stats card (enhanced) ── */}
               <div className="card mp-stats-card">
                 <div className="mp-stats-header">
-                  <h2 className="mp-sec-title">📊 Stats</h2>
-                  <button
-                    type="button"
-                    className="mp-share-btn"
-                    onClick={() => router.push("/profile/" + profile.username)}
-                    title="View public profile"
-                  >
-                    ↗
-                  </button>
+                  <h2 className="mp-sec-title">
+                    <BarChart3 size={18} aria-hidden="true" />
+                    Stats
+                  </h2>
                 </div>
 
                 {/* W/L/D stacked bar */}
@@ -305,7 +324,12 @@ export default function ProfilePage() {
                 <ChangePasswordForm onSubmit={(current, newPassword) => updatePassword(current ?? "", newPassword)} />
               )}
 
-              <DangerZone username={profile.username} onDelete={deleteAccount} />
+              <DangerZone
+                username={profile.username}
+                onDelete={deleteAccount}
+                titleIcon={<ShieldAlert size={20} aria-hidden="true" />}
+                deleteIcon={<Trash2 size={16} aria-hidden="true" />}
+              />
             </div>
           </div>
         </div>
@@ -325,6 +349,9 @@ export default function ProfilePage() {
         }
 
         .mp-heading {
+          display: flex;
+          align-items: center;
+          gap: 10px;
           font-size: 1.8rem;
           margin-bottom: 4px;
         }
@@ -442,37 +469,25 @@ export default function ProfilePage() {
         .mp-stats-header {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           margin-bottom: 14px;
         }
 
         .mp-sec-title {
           margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
           font-family: var(--font-heading);
           font-size: 1.05rem;
           font-weight: 700;
           color: var(--text-primary);
         }
 
-        .mp-share-btn {
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 8px;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-muted);
-          font-size: 1rem;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .mp-share-btn:hover {
-          background: rgba(167,139,250,0.15);
-          color: #a78bfa;
-          border-color: rgba(167,139,250,0.3);
+        .mp-heading :global(svg),
+        .mp-hero-actions :global(svg),
+        .mp-sec-title :global(svg) {
+          flex-shrink: 0;
         }
 
         /* W/L/D Bar */

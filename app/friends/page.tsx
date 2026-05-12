@@ -2,10 +2,26 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Check,
+  Clock,
+  FilterX,
+  Inbox,
+  Search,
+  Send,
+  Sparkles,
+  Swords,
+  Trash2,
+  UserCheck,
+  UserPlus,
+  UsersRound,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import Navbar from "../../components/Navbar";
 import { supabaseClient } from "../../lib/supabase";
 import { deleteFriendship, searchProfilesByKeyword, type FriendProfileRow } from "../../lib/friendsService";
-import { parseUserStatus, statusSortWeight, type UserStatus } from "../../lib/statusUtils";
+import { parseUserStatus, statusSortWeight } from "../../lib/statusUtils";
 import ConfirmDeleteModal from "../../components/friends/ConfirmDeleteModal";
 import { FriendRow, SearchPlayerRow } from "../../components/friends/FriendRow";
 import { useNotification } from "../../hooks/useNotification";
@@ -193,11 +209,11 @@ async function checkInviteBusyState(meId: string, friendId: string): Promise<Bus
   return null;
 }
 
-function EmptyBlock({ icon, title, hint }: { icon: string; title: string; hint: string }) {
+function EmptyBlock({ Icon, title, hint }: { Icon: LucideIcon; title: string; hint: string }) {
   return (
     <div className="fb-root">
       <div className="fb-icon" aria-hidden>
-        {icon}
+        <Icon size={28} strokeWidth={2.35} />
       </div>
       <div className="fb-title">{title}</div>
       <p className="fb-hint">{hint}</p>
@@ -207,8 +223,15 @@ function EmptyBlock({ icon, title, hint }: { icon: string; title: string; hint: 
           padding: 28px 16px 22px;
         }
         .fb-icon {
-          font-size: 2rem;
-          line-height: 1;
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #c4b5fd;
+          background: rgba(124, 58, 237, 0.14);
+          border: 1px solid rgba(167, 139, 250, 0.18);
           margin-bottom: 10px;
         }
         .fb-title {
@@ -807,14 +830,17 @@ export default function FriendsPage() {
         <div className="fp-container">
           <section className="card fp-hero">
             <div className="fp-hero-copy">
-              <span className="fp-kicker">SOCIAL HUB</span>
+              <span className="fp-kicker">
+                <UsersRound size={14} strokeWidth={2.35} aria-hidden="true" />
+                SOCIAL HUB
+              </span>
               <h1 className="fp-title">Friends</h1>
               <p className="fp-desc">Find players, manage requests, and start private matches.</p>
             </div>
             <div className="fp-stats">
               <div className="fp-st fp-st-friends">
                 <span className="fp-st-ico" aria-hidden>
-                  {"\u{1F465}"}
+                  <UsersRound size={22} strokeWidth={2.35} />
                 </span>
                 <div className="fp-st-body">
                   <strong className="fp-st-num fp-num-white">{stats.total}</strong>
@@ -823,7 +849,7 @@ export default function FriendsPage() {
               </div>
               <div className="fp-st fp-st-on">
                 <span className="fp-st-ico" aria-hidden>
-                  {"\u{1F7E2}"}
+                  <UserCheck size={22} strokeWidth={2.35} />
                 </span>
                 <div className="fp-st-body">
                   <strong className="fp-st-num fp-num-green">{stats.online}</strong>
@@ -832,7 +858,7 @@ export default function FriendsPage() {
               </div>
               <div className="fp-st fp-st-q">
                 <span className="fp-st-ico" aria-hidden>
-                  {"\u{1F7E1}"}
+                  <Clock size={22} strokeWidth={2.35} />
                 </span>
                 <div className="fp-st-body">
                   <strong className="fp-st-num fp-num-amber">{stats.queue}</strong>
@@ -841,7 +867,7 @@ export default function FriendsPage() {
               </div>
               <div className="fp-st fp-st-m">
                 <span className="fp-st-ico" aria-hidden>
-                  {"\u{1F534}"}
+                  <Swords size={22} strokeWidth={2.35} />
                 </span>
                 <div className="fp-st-body">
                   <strong className="fp-st-num fp-num-red">{stats.match}</strong>
@@ -858,7 +884,10 @@ export default function FriendsPage() {
             <div className="fp-main">
               <section className="card fp-panel">
                 <div className="fp-head">
-                  <span className="fp-head-title">Find players</span>
+                  <span className="fp-head-title">
+                    <Search size={16} strokeWidth={2.35} aria-hidden="true" />
+                    Find players
+                  </span>
                   <small>Type at least 2 characters</small>
                 </div>
                 <div className="fp-search-wrap">
@@ -888,15 +917,15 @@ export default function FriendsPage() {
                 </div>
                 <div className="fp-list">
                   {searching ? (
-                    <EmptyBlock icon={"\u2728"} title="Searching…" hint="Looking for matching usernames." />
+                    <EmptyBlock Icon={Sparkles} title="Searching…" hint="Looking for matching usernames." />
                   ) : search.trim().length < 2 ? (
                     <EmptyBlock
-                      icon={"\u{1F50D}"}
+                      Icon={Search}
                       title="Find your next duel"
                       hint="Start typing a username to search."
                     />
                   ) : searchResults.length === 0 ? (
-                    <EmptyBlock icon={"\u{1F50D}"} title="No players found." hint="Try a different keyword or spelling." />
+                    <EmptyBlock Icon={Search} title="No players found." hint="Try a different keyword or spelling." />
                   ) : (
                     searchResults.map((p) => {
                       const already = friendIds.has(p.id);
@@ -921,7 +950,14 @@ export default function FriendsPage() {
                                     onClick={() => req && cancelFriendRequest(req.id, p.id)}
                                     style={{ color: "#f87171" }}
                                   >
-                                    {actionLoading === `cancel-req-${p.id}` ? "…" : "Cancel request"}
+                                    {actionLoading === `cancel-req-${p.id}` ? (
+                                      "…"
+                                    ) : (
+                                      <>
+                                        <X size={14} strokeWidth={2.35} aria-hidden="true" />
+                                        Cancel request
+                                      </>
+                                    )}
                                   </button>
                                 );
                               })()
@@ -934,7 +970,14 @@ export default function FriendsPage() {
                                 disabled={actionLoading === `add-${p.id}`}
                                 onClick={() => addFriend(p.id)}
                               >
-                                {actionLoading === `add-${p.id}` ? "…" : "Add friend"}
+                                {actionLoading === `add-${p.id}` ? (
+                                  "…"
+                                ) : (
+                                  <>
+                                    <UserPlus size={14} strokeWidth={2.35} aria-hidden="true" />
+                                    Add friend
+                                  </>
+                                )}
                               </button>
                             )
                           }
@@ -948,7 +991,10 @@ export default function FriendsPage() {
               <section className="card fp-panel">
                 <div className="fp-head fp-head-row">
                   <div className="fp-head-block">
-                    <span className="fp-head-title">Friends</span>
+                    <span className="fp-head-title">
+                      <UsersRound size={16} strokeWidth={2.35} aria-hidden="true" />
+                      Friends
+                    </span>
                     <small className="fp-head-sub">{friendItems.length} total</small>
                   </div>
                 </div>
@@ -981,12 +1027,12 @@ export default function FriendsPage() {
                 <div className="fp-list fp-friends-list">
                   {friendItems.length === 0 ? (
                     <EmptyBlock
-                      icon={"\u{1F465}"}
+                      Icon={UsersRound}
                       title="No friends yet"
                       hint="Search for players above and send a friend request."
                     />
                   ) : filteredSortedFriends.length === 0 ? (
-                    <EmptyBlock icon={"\u{1F644}"} title="No one in this filter" hint="Try another tab or clear filters." />
+                    <EmptyBlock Icon={FilterX} title="No one in this filter" hint="Try another tab or clear filters." />
                   ) : (
                     filteredSortedFriends.map(({ profile: p }) => {
                       const st = parseUserStatus(p.status);
@@ -1013,13 +1059,16 @@ export default function FriendsPage() {
             <aside className="fp-side">
               <section className="card fp-panel">
                 <div className="fp-head">
-                  <span className="fp-head-title">Friend requests</span>
+                  <span className="fp-head-title">
+                    <Inbox size={16} strokeWidth={2.35} aria-hidden="true" />
+                    Friend requests
+                  </span>
                   {incomingRequests.length > 0 ? <small className="fp-ping">{incomingRequests.length} new</small> : <small>No new</small>}
                 </div>
                 <div className="fp-list">
                   {incomingRequests.length === 0 ? (
                     <EmptyBlock
-                      icon={"\u{1F4ED}"}
+                      Icon={Inbox}
                       title="Inbox clear"
                       hint="New requests will appear here."
                     />
@@ -1038,6 +1087,7 @@ export default function FriendsPage() {
                                   disabled={actionLoading === `friend-${req.id}`}
                                   onClick={() => respondFriendRequest(req.id, true)}
                                 >
+                                  <Check size={14} strokeWidth={2.35} aria-hidden="true" />
                                   Accept
                                 </button>
                                 <button
@@ -1046,6 +1096,7 @@ export default function FriendsPage() {
                                   disabled={actionLoading === `friend-${req.id}`}
                                   onClick={() => respondFriendRequest(req.id, false)}
                                 >
+                                  <X size={14} strokeWidth={2.35} aria-hidden="true" />
                                   Decline
                                 </button>
                               </div>
@@ -1060,12 +1111,15 @@ export default function FriendsPage() {
 
               <section className="card fp-panel">
                 <div className="fp-head">
-                  <span className="fp-head-title">Match invites</span>
+                  <span className="fp-head-title">
+                    <Swords size={16} strokeWidth={2.35} aria-hidden="true" />
+                    Match invites
+                  </span>
                   <small>{incomingInvites.length} pending</small>
                 </div>
                 <div className="fp-list">
                   {incomingInvites.length === 0 ? (
-                    <EmptyBlock icon={"\u2694"} title="No duels pending" hint="Private invites show up here." />
+                    <EmptyBlock Icon={Swords} title="No duels pending" hint="Private invites show up here." />
                   ) : (
                     incomingInvites.map((inv) =>
                       inv.profile ? (
@@ -1081,6 +1135,7 @@ export default function FriendsPage() {
                                   disabled={actionLoading === `game-${inv.id}`}
                                   onClick={() => respondGameInvite(inv.id, true)}
                                 >
+                                  <Check size={14} strokeWidth={2.35} aria-hidden="true" />
                                   Accept
                                 </button>
                                 <button
@@ -1089,6 +1144,7 @@ export default function FriendsPage() {
                                   disabled={actionLoading === `game-${inv.id}`}
                                   onClick={() => respondGameInvite(inv.id, false)}
                                 >
+                                  <X size={14} strokeWidth={2.35} aria-hidden="true" />
                                   Decline
                                 </button>
                               </div>
@@ -1104,13 +1160,17 @@ export default function FriendsPage() {
               {(outgoingRequests.length > 0 || outgoingInvites.length > 0) && (
                 <section className="card fp-panel fp-wait">
                   <div className="fp-head">
-                    <span className="fp-head-title">Waiting</span>
+                    <span className="fp-head-title">
+                      <Send size={16} strokeWidth={2.35} aria-hidden="true" />
+                      Waiting
+                    </span>
                     <small>Total {outgoingRequests.length + outgoingInvites.length}</small>
                   </div>
                   <div className="fp-wait-body">
                     {outgoingRequests.map((req) =>
                       req.profile ? (
                         <div key={req.id} className="fp-wait-line">
+                          <UserPlus size={14} strokeWidth={2.35} aria-hidden="true" />
                           Friend request to <b>{req.profile.username}</b>
                         </div>
                       ) : null
@@ -1126,7 +1186,14 @@ export default function FriendsPage() {
                             onClick={() => cancelInvite(inv.id)}
                             style={{ color: "#ef4444", flexShrink: 0 }}
                           >
-                            {actionLoading === `cancel-${inv.id}` ? "…" : "Cancel"}
+                            {actionLoading === `cancel-${inv.id}` ? (
+                              "…"
+                            ) : (
+                              <>
+                                <Trash2 size={14} strokeWidth={2.35} aria-hidden="true" />
+                                Cancel
+                              </>
+                            )}
                           </button>
                         </div>
                       ) : null
@@ -1176,7 +1243,9 @@ export default function FriendsPage() {
         }
 
         .fp-kicker {
-          display: block;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
           font-family: var(--font-heading);
           font-weight: 700;
           letter-spacing: 0.18em;
@@ -1222,8 +1291,34 @@ export default function FriendsPage() {
         }
 
         .fp-st-ico {
-          font-size: 1.25rem;
-          line-height: 1;
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: rgba(255, 255, 255, 0.06);
+        }
+
+        .fp-st-friends .fp-st-ico {
+          color: #e2e8f0;
+          background: rgba(148, 163, 184, 0.12);
+        }
+
+        .fp-st-on .fp-st-ico {
+          color: #34d399;
+          background: rgba(16, 185, 129, 0.14);
+        }
+
+        .fp-st-q .fp-st-ico {
+          color: #fbbf24;
+          background: rgba(245, 158, 11, 0.14);
+        }
+
+        .fp-st-m .fp-st-ico {
+          color: #f87171;
+          background: rgba(239, 68, 68, 0.14);
         }
 
         .fp-st-body {
@@ -1320,6 +1415,9 @@ export default function FriendsPage() {
         }
 
         .fp-head-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
           font-family: var(--font-heading);
           font-weight: 800;
           font-size: 1rem;
@@ -1460,6 +1558,10 @@ export default function FriendsPage() {
           height: 32px;
           padding: 0 12px;
           font-size: 12px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
         }
 
         .fp-badge {
@@ -1513,6 +1615,9 @@ export default function FriendsPage() {
         }
 
         .fp-wait-line {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
           font-size: 0.85rem;
           color: rgba(148, 163, 184, 0.95);
           line-height: 1.4;

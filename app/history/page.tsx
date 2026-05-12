@@ -1,6 +1,34 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Bot,
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Flag,
+  Flame,
+  History,
+  Inbox,
+  ListFilter,
+  LoaderCircle,
+  Pause,
+  Play,
+  Search,
+  SkipBack,
+  SkipForward,
+  Swords,
+  Timer,
+  TrendingUp,
+  Trophy,
+  UserRound,
+  UsersRound,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { supabaseClient } from '../../lib/supabase';
 import Navbar from '../../components/Navbar';
 import Board from '../../components/Board';
@@ -51,6 +79,28 @@ type OpponentProfile = {
   avatar_url: string | null;
 };
 
+const modeFilterMeta: Record<ModeFilter, { label: string; Icon: LucideIcon }> = {
+  all: { label: 'All Modes', Icon: UsersRound },
+  pvp: { label: 'PVP', Icon: Swords },
+  ai_ranked: { label: 'AI Ranked', Icon: Bot },
+  ai_casual: { label: 'AI Casual', Icon: Bot },
+};
+
+const resultFilterMeta: Record<ResultFilter, { label: string; Icon: LucideIcon; color: string }> = {
+  all: { label: 'All Results', Icon: ListFilter, color: 'var(--text-primary)' },
+  win: { label: 'Win', Icon: CircleCheck, color: '#10b981' },
+  loss: { label: 'Loss', Icon: CircleX, color: '#ef4444' },
+  draw: { label: 'Draw', Icon: Flag, color: '#94a3b8' },
+};
+
+const datePresetMeta: Record<DatePreset, { label: string; Icon: LucideIcon }> = {
+  all: { label: 'All Time', Icon: Clock },
+  '7d': { label: 'Last 7D', Icon: CalendarDays },
+  '30d': { label: 'Last 30D', Icon: CalendarDays },
+  '90d': { label: 'Last 90D', Icon: CalendarDays },
+  custom: { label: 'Custom Date', Icon: CalendarDays },
+};
+
 function normalizeMatchType(t: MatchType | null): 'pvp' | 'ai_ranked' | 'ai_casual' {
   if (t === 'ai_casual') return 'ai_casual';
   if (t === 'ai_ranked' || t === 'ai') return 'ai_ranked';
@@ -59,12 +109,12 @@ function normalizeMatchType(t: MatchType | null): 'pvp' | 'ai_ranked' | 'ai_casu
 
 function getModeBadge(mode: 'pvp' | 'ai_ranked' | 'ai_casual') {
   if (mode === 'ai_casual') {
-    return { label: 'AI Casual', color: '#94a3b8', bg: 'rgba(148,163,184,0.16)' };
+    return { label: 'AI Casual', color: '#94a3b8', bg: 'rgba(148,163,184,0.16)', Icon: Bot };
   }
   if (mode === 'ai_ranked') {
-    return { label: 'AI Ranked', color: '#a78bfa', bg: 'rgba(124,58,237,0.18)' };
+    return { label: 'AI Ranked', color: '#a78bfa', bg: 'rgba(124,58,237,0.18)', Icon: Bot };
   }
-  return { label: 'PVP', color: '#10b981', bg: 'rgba(16,185,129,0.16)' };
+  return { label: 'PVP', color: '#10b981', bg: 'rgba(16,185,129,0.16)', Icon: Swords };
 }
 
 function parseBoardSnapshot(raw: unknown): Cell[] | null {
@@ -537,25 +587,40 @@ export default function HistoryPage() {
       <Navbar />
       <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
         <div style={{ maxWidth: '1040px', margin: '0 auto' }}>
-          <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '16px' }}>Match History</h1>
+          <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <History size={30} strokeWidth={2.4} color="var(--accent-violet-light)" />
+            Match History
+          </h1>
 
           <div className="card" style={{ marginBottom: '14px', padding: '8px', display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
             <div style={{ border: '1px solid rgba(16,185,129,0.3)', background: 'linear-gradient(135deg, rgba(16,185,129,0.14), rgba(16,185,129,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Winrate 7D</div>
+              <div className="history-stat-title">
+                <Trophy size={14} color="#10b981" />
+                Winrate 7D
+              </div>
               <div style={{ color: '#10b981', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>{analytics.winRate7}%</div>
             </div>
             <div style={{ border: '1px solid rgba(34,211,238,0.3)', background: 'linear-gradient(135deg, rgba(34,211,238,0.14), rgba(34,211,238,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Winrate 30D</div>
+              <div className="history-stat-title">
+                <CalendarDays size={14} color="#22d3ee" />
+                Winrate 30D
+              </div>
               <div style={{ color: '#22d3ee', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>{analytics.winRate30}%</div>
             </div>
             <div style={{ border: '1px solid rgba(251,191,36,0.3)', background: 'linear-gradient(135deg, rgba(251,191,36,0.14), rgba(251,191,36,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Current Streak</div>
+              <div className="history-stat-title">
+                <Flame size={14} color="#fbbf24" />
+                Current Streak
+              </div>
               <div style={{ color: '#fbbf24', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>
                 {analytics.currentStreak.label} {analytics.currentStreak.count}
               </div>
             </div>
             <div style={{ border: `1px solid ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, background: `linear-gradient(135deg, ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.14)' : 'rgba(239,68,68,0.14)'}, rgba(255,255,255,0.03))`, borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Avg ELO Delta (20)</div>
+              <div className="history-stat-title">
+                <TrendingUp size={14} color={analytics.avgDelta20 >= 0 ? '#10b981' : '#ef4444'} />
+                Avg ELO Delta (20)
+              </div>
               <div style={{ color: analytics.avgDelta20 >= 0 ? '#10b981' : '#ef4444', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>
                 {analytics.avgDelta20 > 0 ? '+' : ''}{analytics.avgDelta20}
               </div>
@@ -568,8 +633,10 @@ export default function HistoryPage() {
               style={{ width: '100%', justifyContent: 'space-between', padding: '8px 10px', fontSize: '0.85rem' }}
               onClick={() => setShowChart((prev) => !prev)}
             >
-              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700 }}>
-                ELO Trend {showChart ? '\u25B2' : '\u25BC'}
+              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <TrendingUp size={16} color="#a78bfa" />
+                ELO Trend
+                {showChart ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </span>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
                 {showChart ? 'Hide' : 'Show'}
@@ -588,49 +655,69 @@ export default function HistoryPage() {
           </div>
 
           <div className="card" style={{ marginBottom: '14px', padding: '12px', display: 'grid', gap: '10px' }}>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {(['all', 'pvp', 'ai_ranked', 'ai_casual'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  className={modeFilter === mode ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={{ padding: '7px 12px', fontSize: '0.8rem' }}
-                  onClick={() => setModeFilter(mode)}
-                >
-                  {mode === 'all' ? 'All Modes' : mode === 'pvp' ? 'PVP' : mode === 'ai_ranked' ? 'AI Ranked' : 'AI Casual'}
-                </button>
-              ))}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <ListFilter size={15} color="#a78bfa" />
+              Filters
             </div>
 
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {(['all', 'win', 'loss', 'draw'] as const).map((result) => (
-                <button
-                  key={result}
-                  className={resultFilter === result ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={{ padding: '7px 12px', fontSize: '0.8rem' }}
-                  onClick={() => setResultFilter(result)}
-                >
-                  {result === 'all' ? 'All Results' : result[0].toUpperCase() + result.slice(1)}
-                </button>
-              ))}
+              {(['all', 'pvp', 'ai_ranked', 'ai_casual'] as const).map((mode) => {
+                const meta = modeFilterMeta[mode];
+                const Icon = meta.Icon;
+                return (
+                  <button
+                    key={mode}
+                    className={modeFilter === mode ? 'btn btn-primary' : 'btn btn-ghost'}
+                    style={{ padding: '7px 12px', fontSize: '0.8rem' }}
+                    onClick={() => setModeFilter(mode)}
+                  >
+                    <Icon size={14} />
+                    {meta.label}
+                  </button>
+                );
+              })}
             </div>
 
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {(['all', '7d', '30d', '90d', 'custom'] as const).map((preset) => (
-                <button
-                  key={preset}
-                  className={datePreset === preset ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={{ padding: '7px 12px', fontSize: '0.78rem' }}
-                  onClick={() => {
-                    setDatePreset(preset);
-                    if (preset !== 'custom') {
-                      setFromDate('');
-                      setToDate('');
-                    }
-                  }}
-                >
-                  {preset === 'all' ? 'All Time' : preset === 'custom' ? 'Custom Date' : `Last ${preset.toUpperCase()}`}
-                </button>
-              ))}
+              {(['all', 'win', 'loss', 'draw'] as const).map((result) => {
+                const meta = resultFilterMeta[result];
+                const Icon = meta.Icon;
+                return (
+                  <button
+                    key={result}
+                    className={resultFilter === result ? 'btn btn-primary' : 'btn btn-ghost'}
+                    style={{ padding: '7px 12px', fontSize: '0.8rem' }}
+                    onClick={() => setResultFilter(result)}
+                  >
+                    <Icon size={14} color={resultFilter === result ? 'currentColor' : meta.color} />
+                    {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {(['all', '7d', '30d', '90d', 'custom'] as const).map((preset) => {
+                const meta = datePresetMeta[preset];
+                const Icon = meta.Icon;
+                return (
+                  <button
+                    key={preset}
+                    className={datePreset === preset ? 'btn btn-primary' : 'btn btn-ghost'}
+                    style={{ padding: '7px 12px', fontSize: '0.78rem' }}
+                    onClick={() => {
+                      setDatePreset(preset);
+                      if (preset !== 'custom') {
+                        setFromDate('');
+                        setToDate('');
+                      }
+                    }}
+                  >
+                    <Icon size={14} />
+                    {meta.label}
+                  </button>
+                );
+              })}
             </div>
 
             {datePreset === 'custom' && (
@@ -661,35 +748,38 @@ export default function HistoryPage() {
               </div>
             )}
 
-            <input
-              className="input"
-              placeholder="Search opponent name..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              style={{ maxWidth: '320px' }}
-            />
+            <div style={{ position: 'relative', maxWidth: '320px' }}>
+              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                className="input"
+                placeholder="Search opponent name..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                style={{ width: '100%', paddingLeft: '36px' }}
+              />
+            </div>
           </div>
 
           <div className="card" style={{ marginBottom: '16px', padding: '12px 18px', display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-            <span style={{ color: '#10b981', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>Win: {summary.win}</span>
-            <span style={{ color: '#ef4444', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>Loss: {summary.loss}</span>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 700 }}>Draw: {summary.draw}</span>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Loaded: {rows.length}</span>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600 }}>Filtered: {viewRows.length}</span>
+            <span className="history-summary-item" style={{ color: '#10b981' }}><CircleCheck size={15} />Win: {summary.win}</span>
+            <span className="history-summary-item" style={{ color: '#ef4444' }}><CircleX size={15} />Loss: {summary.loss}</span>
+            <span className="history-summary-item" style={{ color: 'var(--text-muted)' }}><Flag size={15} />Draw: {summary.draw}</span>
+            <span className="history-summary-item" style={{ color: 'var(--text-muted)', fontWeight: 600 }}><History size={15} />Loaded: {rows.length}</span>
+            <span className="history-summary-item" style={{ color: 'var(--text-muted)', fontWeight: 600 }}><ListFilter size={15} />Filtered: {viewRows.length}</span>
           </div>
 
           <div className="card" style={{ padding: '8px 0', overflow: 'auto' }}>
             <table className="table-premium">
               <thead>
                 <tr>
-                  <th style={{ paddingLeft: '20px' }}>Result</th>
-                  <th>Opponent</th>
-                  <th>Mode</th>
-                  <th>ELO</th>
-                  <th>Date</th>
+                  <th style={{ paddingLeft: '20px' }}><span className="history-table-heading"><CircleCheck size={14} />Result</span></th>
+                  <th><span className="history-table-heading"><UserRound size={14} />Opponent</span></th>
+                  <th><span className="history-table-heading"><Swords size={14} />Mode</span></th>
+                  <th><span className="history-table-heading"><TrendingUp size={14} />ELO</span></th>
+                  <th><span className="history-table-heading"><CalendarDays size={14} />Date</span></th>
                   <th style={{ paddingRight: '20px' }}>
                     <div style={{ display: 'grid', gap: '2px' }}>
-                      <span>Replay</span>
+                      <span className="history-table-heading"><Play size={14} />Replay</span>
                       <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.68rem', letterSpacing: '0.02em', textTransform: 'none' }}>Watch Replay</span>
                     </div>
                   </th>
@@ -709,6 +799,7 @@ export default function HistoryPage() {
 
                   const mode = normalizeMatchType(r.match_type);
                   const badge = getModeBadge(mode);
+                  const BadgeIcon = badge.Icon;
                   const isAI = mode === 'ai_ranked' || mode === 'ai_casual';
 
                   let rowBg = 'transparent';
@@ -723,11 +814,16 @@ export default function HistoryPage() {
                     resultColor = '#ef4444';
                     resultLabel = 'Loss';
                   }
+                  const resultMeta = resultFilterMeta[result];
+                  const ResultIcon = resultMeta.Icon;
 
                   return (
                     <tr key={r.id} style={{ background: rowBg }}>
                       <td style={{ paddingLeft: '20px', fontFamily: 'var(--font-heading)', fontWeight: 700, color: resultColor }}>
-                        {resultLabel}
+                        <span className="history-inline-icon">
+                          <ResultIcon size={15} color={resultColor} />
+                          {resultLabel}
+                        </span>
                       </td>
                       <td>
                         <div
@@ -739,6 +835,10 @@ export default function HistoryPage() {
                           <div className={!isAI ? "history-opp-avatar" : ""} style={{ width: 30, height: 30, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg-layer-2)', border: '1px solid transparent', transition: 'transform 0.15s, border-color 0.2s' }}>
                             {opponentProfile?.avatar_url ? (
                               <img src={opponentProfile.avatar_url} alt={opponentProfile.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : isAI ? (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a78bfa' }}>
+                                <Bot size={16} />
+                              </div>
                             ) : (
                               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.74rem', fontWeight: 700 }}>
                                 {(opponentProfile?.username ?? 'OP').slice(0, 2).toUpperCase()}
@@ -754,7 +854,8 @@ export default function HistoryPage() {
                         </div>
                       </td>
                       <td>
-                        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.78rem', color: badge.color, background: badge.bg, padding: '4px 10px', borderRadius: '999px' }}>
+                        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.78rem', color: badge.color, background: badge.bg, padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <BadgeIcon size={13} />
                           {badge.label}
                         </span>
                       </td>
@@ -780,6 +881,7 @@ export default function HistoryPage() {
                           aria-label="Watch replay of this match"
                           onClick={() => openReplay(r)}
                         >
+                          <Play size={14} />
                           Watch Replay
                         </button>
                       </td>
@@ -789,14 +891,14 @@ export default function HistoryPage() {
                 {loading && (
                   <tr>
                     <td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-                      Loading history...
+                      <span className="history-empty-state"><LoaderCircle className="history-spin" size={18} />Loading history...</span>
                     </td>
                   </tr>
                 )}
                 {!loading && viewRows.length === 0 && (
                   <tr>
                     <td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-                      No matches found with current filter.
+                      <span className="history-empty-state"><Inbox size={18} />No matches found with current filter.</span>
                     </td>
                   </tr>
                 )}
@@ -806,7 +908,13 @@ export default function HistoryPage() {
 
           <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center' }}>
             <button className="btn btn-ghost" disabled={loadingMore || !hasMore || loading} onClick={loadMore}>
-              {loadingMore ? 'Loading...' : hasMore ? 'Load More' : 'No More Matches'}
+              {loadingMore ? (
+                <><LoaderCircle className="history-spin" size={15} />Loading...</>
+              ) : hasMore ? (
+                <><History size={15} />Load More</>
+              ) : (
+                <><Inbox size={15} />No More Matches</>
+              )}
             </button>
           </div>
         </div>
@@ -834,15 +942,18 @@ export default function HistoryPage() {
             style={{ width: '100%', maxWidth: '980px', padding: '20px', borderColor: 'rgba(124,58,237,0.35)', maxHeight: '92vh', overflow: 'auto' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.15rem' }}>
+              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.15rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <Play size={18} color="#a78bfa" />
                 Match Replay & Detail
               </div>
               <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={closeReplay}>
+                <X size={15} />
                 Close
               </button>
             </div>
 
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <CalendarDays size={15} />
               {new Date(selectedMatch.played_at).toLocaleString()}
             </div>
 
@@ -855,12 +966,14 @@ export default function HistoryPage() {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <Timer size={14} />
                         Move {safeReplayIndex + 1} / {replayFrames.length}
                         {typeof currentFrame?.turnCount === 'number' ? ` | Turn ${currentFrame.turnCount}` : ''}
                         {currentFrame?.actorId ? ` | ${currentFrame.actorId === meId ? 'You' : 'Opponent'} moved` : ''}
                       </div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={14} />
                         {currentFrame?.playedAt ? new Date(currentFrame.playedAt).toLocaleTimeString() : ''}
                       </div>
                     </div>
@@ -875,6 +988,7 @@ export default function HistoryPage() {
                           setReplayIndex((prev) => Math.max(prev - 1, 0));
                         }}
                       >
+                        <SkipBack size={14} />
                         Prev
                       </button>
                       <button
@@ -885,6 +999,7 @@ export default function HistoryPage() {
                           setReplayPlaying((p) => !p);
                         }}
                       >
+                        {replayPlaying ? <Pause size={14} /> : <Play size={14} />}
                         {replayPlaying ? 'Pause' : 'Play'}
                       </button>
                       <button
@@ -896,6 +1011,7 @@ export default function HistoryPage() {
                           setReplayIndex((prev) => Math.min(prev + 1, replayFrames.length - 1));
                         }}
                       >
+                        <SkipForward size={14} />
                         Next
                       </button>
                       <button
@@ -920,38 +1036,47 @@ export default function HistoryPage() {
                   </div>
                 ) : (
                   <div className="card" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '18px' }}>
-                    Snapshot not available for this older match.
+                    <span className="history-empty-state"><Inbox size={18} />Snapshot not available for this older match.</span>
                   </div>
                 )}
               </div>
 
               <div style={{ display: 'grid', gap: '10px', alignContent: 'start' }}>
                 <div className="card" style={{ padding: '12px' }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: '8px' }}>Match Facts</div>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                    <Flag size={16} color="#a78bfa" />
+                    Match Facts
+                  </div>
                   {selectedDetail && (
                     <div style={{ display: 'grid', gap: '6px', color: 'var(--text-muted)', fontSize: '0.86rem' }}>
-                      <div>Opponent: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.opponentName}</span></div>
-                      <div>Result: <span style={{ color: selectedDetail.result === 'win' ? '#10b981' : selectedDetail.result === 'loss' ? '#ef4444' : '#94a3b8' }}>{selectedDetail.result.toUpperCase()}</span></div>
-                      <div>ELO Delta: <span style={{ color: selectedDetail.eloDelta >= 0 ? '#10b981' : '#ef4444' }}>{selectedDetail.eloDelta > 0 ? '+' : ''}{selectedDetail.eloDelta}</span></div>
-                      <div>Finish Reason: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.finishReason}</span></div>
-                      <div>Total Turns: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.turns}</span></div>
-                      <div>Duration: <span style={{ color: 'var(--text-primary)' }}>{formatDuration(selectedDetail.duration)}</span></div>
-                      <div>Started: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.startedAt ? new Date(selectedDetail.startedAt).toLocaleString() : '-'}</span></div>
-                      <div>Ended: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.endedAt ? new Date(selectedDetail.endedAt).toLocaleString() : '-'}</span></div>
+                      <div className="history-detail-row"><UserRound size={14} />Opponent: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.opponentName}</span></div>
+                      <div className="history-detail-row">
+                        {selectedDetail.result === 'win' ? <CircleCheck size={14} /> : selectedDetail.result === 'loss' ? <CircleX size={14} /> : <Flag size={14} />}
+                        Result: <span style={{ color: selectedDetail.result === 'win' ? '#10b981' : selectedDetail.result === 'loss' ? '#ef4444' : '#94a3b8' }}>{selectedDetail.result.toUpperCase()}</span>
+                      </div>
+                      <div className="history-detail-row"><TrendingUp size={14} />ELO Delta: <span style={{ color: selectedDetail.eloDelta >= 0 ? '#10b981' : '#ef4444' }}>{selectedDetail.eloDelta > 0 ? '+' : ''}{selectedDetail.eloDelta}</span></div>
+                      <div className="history-detail-row"><Flag size={14} />Finish Reason: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.finishReason}</span></div>
+                      <div className="history-detail-row"><ListFilter size={14} />Total Turns: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.turns}</span></div>
+                      <div className="history-detail-row"><Timer size={14} />Duration: <span style={{ color: 'var(--text-primary)' }}>{formatDuration(selectedDetail.duration)}</span></div>
+                      <div className="history-detail-row"><CalendarDays size={14} />Started: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.startedAt ? new Date(selectedDetail.startedAt).toLocaleString() : '-'}</span></div>
+                      <div className="history-detail-row"><Clock size={14} />Ended: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.endedAt ? new Date(selectedDetail.endedAt).toLocaleString() : '-'}</span></div>
                     </div>
                   )}
                 </div>
 
                 <div className="card" style={{ padding: '12px' }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: '8px' }}>Head to Head</div>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                    <Swords size={16} color="#10b981" />
+                    Head to Head
+                  </div>
                   {selectedDetail ? (
                     <div style={{ display: 'grid', gap: '6px', color: 'var(--text-muted)', fontSize: '0.86rem' }}>
-                      <div>Total Matches: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.h2hCount}</span></div>
-                      <div>W-L-D: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.headToHead.win}-{selectedDetail.headToHead.loss}-{selectedDetail.headToHead.draw}</span></div>
-                      <div>Cumulative ELO Delta: <span style={{ color: selectedDetail.headToHead.eloDelta >= 0 ? '#10b981' : '#ef4444' }}>{selectedDetail.headToHead.eloDelta > 0 ? '+' : ''}{selectedDetail.headToHead.eloDelta}</span></div>
+                      <div className="history-detail-row"><UsersRound size={14} />Total Matches: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.h2hCount}</span></div>
+                      <div className="history-detail-row"><Trophy size={14} />W-L-D: <span style={{ color: 'var(--text-primary)' }}>{selectedDetail.headToHead.win}-{selectedDetail.headToHead.loss}-{selectedDetail.headToHead.draw}</span></div>
+                      <div className="history-detail-row"><TrendingUp size={14} />Cumulative ELO Delta: <span style={{ color: selectedDetail.headToHead.eloDelta >= 0 ? '#10b981' : '#ef4444' }}>{selectedDetail.headToHead.eloDelta > 0 ? '+' : ''}{selectedDetail.headToHead.eloDelta}</span></div>
                     </div>
                   ) : (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem' }}>No data.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem' }}><span className="history-empty-state"><Inbox size={16} />No data.</span></div>
                   )}
                 </div>
               </div>
@@ -960,6 +1085,45 @@ export default function HistoryPage() {
         </div>
       )}
       <style jsx global>{`
+        .history-stat-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--text-muted);
+          font-size: 0.66rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-family: var(--font-heading);
+          font-weight: 600;
+        }
+
+        .history-summary-item,
+        .history-table-heading,
+        .history-inline-icon,
+        .history-empty-state,
+        .history-detail-row {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .history-summary-item {
+          font-family: var(--font-heading);
+          font-weight: 700;
+        }
+
+        .history-table-heading {
+          justify-content: flex-start;
+        }
+
+        .history-detail-row {
+          flex-wrap: wrap;
+        }
+
+        .history-spin {
+          animation: history-spin 1s linear infinite;
+        }
+
         .history-opp-link:hover .history-opp-avatar {
           transform: scale(1.1);
           border-color: rgba(167, 139, 250, 0.4) !important;
@@ -967,6 +1131,12 @@ export default function HistoryPage() {
 
         .history-opp-link:hover .history-opp-name {
           color: #a78bfa !important;
+        }
+
+        @keyframes history-spin {
+          to {
+            transform: rotate(360deg);
+          }
         }
       `}</style>
     </>

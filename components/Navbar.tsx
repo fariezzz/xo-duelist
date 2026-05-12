@@ -2,6 +2,16 @@
 import Link from 'next/link';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  Bell,
+  ChevronDown,
+  History,
+  House,
+  LogOut,
+  Trophy,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react';
 import { supabaseClient } from '../lib/supabase';
 import TierBadge from './TierBadge';
 import { clearCachedProfile, getCachedProfile, setCachedProfile } from '../lib/profileCache';
@@ -13,11 +23,6 @@ interface NavProfile {
   avatarUrl: string | null;
 }
 
-type FriendRequestChangePayload = {
-  new?: { status?: string } | null;
-  old?: { status?: string } | null;
-};
-
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname() ?? '';
@@ -26,17 +31,13 @@ export default function Navbar() {
   const [notifCount, setNotifCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   const handleNotifCountChange = useCallback((count: number) => {
     setNotifCount(count);
   }, []);
-
-  useEffect(() => {
-    setAvatarFailed(false);
-  }, [profile?.avatarUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +169,7 @@ export default function Navbar() {
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('')
     .slice(0, 2);
+  const avatarSrc = profile?.avatarUrl && failedAvatarUrl !== profile.avatarUrl ? profile.avatarUrl : null;
 
   const navLinkStyle: React.CSSProperties = {
     color: 'var(--text-muted)',
@@ -176,6 +178,9 @@ export default function Navbar() {
     fontWeight: 500,
     transition: 'color 0.2s',
     fontFamily: 'var(--font-heading)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
   };
 
   function navLinkColorFor(path: '/leaderboard' | '/history') {
@@ -237,7 +242,8 @@ export default function Navbar() {
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
             onMouseLeave={(e) => (e.currentTarget.style.color = navLinkColorFor('/leaderboard'))}
           >
-            Leaderboard
+            <Trophy size={15} strokeWidth={2.35} aria-hidden="true" />
+            <span>Leaderboard</span>
           </Link>
           <Link
             href="/history"
@@ -247,7 +253,8 @@ export default function Navbar() {
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
             onMouseLeave={(e) => (e.currentTarget.style.color = navLinkColorFor('/history'))}
           >
-            History
+            <History size={15} strokeWidth={2.35} aria-hidden="true" />
+            <span>History</span>
           </Link>
 
           {/* Notification Bell + separator + ELO */}
@@ -283,7 +290,7 @@ export default function Navbar() {
                     if (!notifOpen) e.currentTarget.style.background = 'transparent';
                   }}
                 >
-                  {'\u{1F514}'}
+                  <Bell size={18} strokeWidth={2.35} aria-hidden="true" />
                   {notifCount > 0 && (
                     <span
                       aria-hidden
@@ -415,12 +422,12 @@ export default function Navbar() {
                     border: '2px solid rgba(124,58,237,0.3)',
                   }}
                 >
-                  {profile.avatarUrl && !avatarFailed ? (
+                  {avatarSrc ? (
                     <img
-                      src={profile.avatarUrl}
+                      src={avatarSrc}
                       alt=""
                       referrerPolicy="no-referrer"
-                      onError={() => setAvatarFailed(true)}
+                      onError={() => setFailedAvatarUrl(avatarSrc)}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : (
@@ -444,9 +451,12 @@ export default function Navbar() {
                 >
                   {profile.username}
                 </span>
-                <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: dropdownOpen ? 'rotate(180deg)' : 'none' }}>
-                  {'\u25BC'}
-                </span>
+                <ChevronDown
+                  size={13}
+                  strokeWidth={2.35}
+                  aria-hidden="true"
+                  style={{ color: 'var(--text-muted)', transition: 'transform 0.2s', transform: dropdownOpen ? 'rotate(180deg)' : 'none' }}
+                />
               </button>
 
               {/* Dropdown */}
@@ -470,12 +480,12 @@ export default function Navbar() {
                     transformOrigin: 'top right',
                   }}
                 >
-                  <DropdownItem icon={'\u{1F464}'} label="My Profile" active={pathname === '/profile'} onClick={() => { setDropdownOpen(false); router.push('/profile'); }} />
-                  <DropdownItem icon={'\u{1F3E0}'} label="Home" active={pathname === '/dashboard'} onClick={() => { setDropdownOpen(false); router.push('/dashboard'); }} />
-                  <DropdownItem icon={'\u{1F3C6}'} label="Leaderboard" active={pathname === '/leaderboard'} onClick={() => { setDropdownOpen(false); router.push('/leaderboard'); }} />
-                  <DropdownItem icon={'\u{1F4DC}'} label="Match History" active={pathname === '/history'} onClick={() => { setDropdownOpen(false); router.push('/history'); }} />
+                  <DropdownItem Icon={UserRound} label="My Profile" active={pathname === '/profile'} onClick={() => { setDropdownOpen(false); router.push('/profile'); }} />
+                  <DropdownItem Icon={House} label="Home" active={pathname === '/dashboard'} onClick={() => { setDropdownOpen(false); router.push('/dashboard'); }} />
+                  <DropdownItem Icon={Trophy} label="Leaderboard" active={pathname === '/leaderboard'} onClick={() => { setDropdownOpen(false); router.push('/leaderboard'); }} />
+                  <DropdownItem Icon={History} label="Match History" active={pathname === '/history'} onClick={() => { setDropdownOpen(false); router.push('/history'); }} />
                   <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
-                  <DropdownItem icon={'\u{1F6AA}'} label="Logout" onClick={signOut} danger />
+                  <DropdownItem Icon={LogOut} label="Logout" onClick={signOut} danger />
                 </div>
               )}
             </div>
@@ -488,13 +498,13 @@ export default function Navbar() {
 
 // ── Dropdown Item ──────────────────────────────────
 function DropdownItem({
-  icon,
+  Icon,
   label,
   onClick,
   danger,
   active,
 }: {
-  icon: string;
+  Icon: LucideIcon;
   label: string;
   onClick: () => void;
   danger?: boolean;
@@ -524,7 +534,7 @@ function DropdownItem({
       onMouseEnter={(e) => (e.currentTarget.style.background = danger ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.06)')}
       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
     >
-      <span style={{ fontSize: '1rem', width: '20px', textAlign: 'center' }}>{icon}</span>
+      <Icon size={18} strokeWidth={2.35} aria-hidden="true" style={{ width: 20, flexShrink: 0 }} />
       {label}
     </button>
   );

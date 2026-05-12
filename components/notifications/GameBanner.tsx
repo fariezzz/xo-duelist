@@ -29,7 +29,7 @@ export default function GameBanner({ banner }: Props) {
         textShadow: `0 0 12px ${color}50`,
       }}
     >
-      {banner.icon && <span>{banner.icon}</span>}
+      {banner.icon && <span style={{ display: "inline-flex", alignItems: "center" }}>{banner.icon}</span>}
       <span>{banner.message}</span>
     </div>
   );

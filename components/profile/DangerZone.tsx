@@ -5,9 +5,11 @@ import { createPortal } from "react-dom";
 interface Props {
   username: string;
   onDelete: () => Promise<void>;
+  titleIcon?: React.ReactNode;
+  deleteIcon?: React.ReactNode;
 }
 
-export default function DangerZone({ username, onDelete }: Props) {
+export default function DangerZone({ username, onDelete, titleIcon, deleteIcon }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [confirmInput, setConfirmInput] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -21,8 +23,8 @@ export default function DangerZone({ username, onDelete }: Props) {
     try {
       await onDelete();
       window.location.href = "/";
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to delete account");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete account");
       setDeleting(false);
     }
   }
@@ -42,11 +44,15 @@ export default function DangerZone({ username, onDelete }: Props) {
             fontWeight: 700,
             fontSize: "1.2rem",
             color: "#ef4444",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
             marginBottom: "8px",
             marginTop: 0,
           }}
         >
-          ⚠ Danger Zone
+          {titleIcon}
+          Danger Zone
         </h2>
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "20px" }}>
           Permanently delete your account and all associated data. This action cannot be undone.
@@ -56,7 +62,8 @@ export default function DangerZone({ username, onDelete }: Props) {
           onClick={() => setShowModal(true)}
           style={{ width: "100%" }}
         >
-          🗑️ Delete Account
+          {deleteIcon}
+          Delete Account
         </button>
       </div>
 
