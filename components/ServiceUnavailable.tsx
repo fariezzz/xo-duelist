@@ -3,6 +3,14 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSupabaseHealth } from "../lib/supabaseHealth";
 
+const MIN_RETRY_FEEDBACK_MS = 650;
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 /**
  * Full-screen overlay that blocks the entire app when Supabase is unavailable.
  *
@@ -36,8 +44,14 @@ export default function ServiceUnavailable() {
 
   const handleRetry = useCallback(async () => {
     setRetrying(true);
+    const startedAt = Date.now();
     try {
       const result = await recheck();
+      const remainingMs = MIN_RETRY_FEEDBACK_MS - (Date.now() - startedAt);
+      if (remainingMs > 0) {
+        await wait(remainingMs);
+      }
+
       if (result === "available") {
         setBackOnline(true);
         setTimeout(() => {
@@ -71,7 +85,7 @@ export default function ServiceUnavailable() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 20,
+        padding: 16,
         background: "rgba(5, 8, 18, 0.95)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
@@ -79,10 +93,12 @@ export default function ServiceUnavailable() {
     >
       <div
         style={{
-          width: "min(480px, 100%)",
+          width: "min(420px, 100%)",
+          maxHeight: "calc(100vh - 32px)",
+          overflowY: "auto",
           textAlign: "center",
-          padding: "48px 36px 40px",
-          borderRadius: 20,
+          padding: "34px 28px 30px",
+          borderRadius: 16,
           border: backOnline ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(124, 58, 237, 0.18)",
           background: "rgba(255, 255, 255, 0.03)",
           boxShadow: backOnline
@@ -94,24 +110,24 @@ export default function ServiceUnavailable() {
       >
         {backOnline ? (
           /* ── Success: Server is back online ── */
-          <div style={{ padding: "20px 0" }}>
+          <div style={{ padding: "12px 0" }}>
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 80,
-                height: 80,
+                width: 64,
+                height: 64,
                 borderRadius: "50%",
                 background: "rgba(16, 185, 129, 0.1)",
                 border: "2px solid rgba(16, 185, 129, 0.3)",
-                marginBottom: 24,
+                marginBottom: 18,
                 animation: "svc-overlay-in 0.4s ease-out forwards",
               }}
             >
               <svg
-                width="40"
-                height="40"
+                width="32"
+                height="32"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="#10b981"
@@ -127,7 +143,7 @@ export default function ServiceUnavailable() {
               style={{
                 fontFamily: "var(--font-heading, 'Rajdhani', sans-serif)",
                 fontWeight: 700,
-                fontSize: "1.8rem",
+                fontSize: "1.55rem",
                 margin: "0 0 10px",
                 color: "#10b981",
                 lineHeight: 1.2,
@@ -138,8 +154,8 @@ export default function ServiceUnavailable() {
             <p
               style={{
                 color: "#94a3b8",
-                fontSize: "0.95rem",
-                margin: "0 0 20px",
+                fontSize: "0.9rem",
+                margin: "0 0 16px",
               }}
             >
               Reloading the page...
@@ -147,8 +163,8 @@ export default function ServiceUnavailable() {
             <div
               style={{
                 display: "inline-block",
-                width: 20,
-                height: 20,
+                width: 18,
+                height: 18,
                 border: "2px solid rgba(16,185,129,0.3)",
                 borderTopColor: "#10b981",
                 borderRadius: "50%",
@@ -165,9 +181,9 @@ export default function ServiceUnavailable() {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 28,
-            width: 100,
-            height: 100,
+            marginBottom: 20,
+            width: 76,
+            height: 76,
           }}
         >
           {/* Pulsing ring */}
@@ -182,8 +198,8 @@ export default function ServiceUnavailable() {
           />
           <svg
             viewBox="0 0 64 64"
-            width="64"
-            height="64"
+            width="52"
+            height="52"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
@@ -220,9 +236,9 @@ export default function ServiceUnavailable() {
           style={{
             fontFamily: "var(--font-heading, 'Rajdhani', sans-serif)",
             fontWeight: 700,
-            fontSize: "2rem",
+            fontSize: "1.65rem",
             letterSpacing: "0.01em",
-            margin: "0 0 12px",
+            margin: "0 0 10px",
             color: "#f1f5f9",
             lineHeight: 1.2,
           }}
@@ -237,10 +253,10 @@ export default function ServiceUnavailable() {
         <p
           style={{
             color: "#94a3b8",
-            fontSize: "0.95rem",
-            lineHeight: 1.7,
-            margin: "0 auto 22px",
-            maxWidth: 380,
+            fontSize: "0.9rem",
+            lineHeight: 1.55,
+            margin: "0 auto 18px",
+            maxWidth: 340,
           }}
         >
           Our server is currently in sleep mode or under maintenance.
@@ -254,20 +270,22 @@ export default function ServiceUnavailable() {
             display: "inline-flex",
             alignItems: "center",
             gap: 8,
-            padding: "8px 16px",
-            borderRadius: 10,
+            maxWidth: "100%",
+            padding: "7px 12px",
+            borderRadius: 8,
             background: "rgba(245, 158, 11, 0.08)",
             border: "1px solid rgba(245, 158, 11, 0.18)",
             color: "#fbbf24",
-            fontSize: "0.82rem",
+            fontSize: "0.76rem",
+            lineHeight: 1.25,
             fontFamily: "var(--font-heading, 'Rajdhani', sans-serif)",
             fontWeight: 600,
-            marginBottom: 28,
+            marginBottom: 22,
           }}
         >
           <svg
-            width="14"
-            height="14"
+            width="13"
+            height="13"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -286,6 +304,7 @@ export default function ServiceUnavailable() {
         {/* Retry Button */}
         <div>
           <button
+            type="button"
             onClick={() => void handleRetry()}
             disabled={retrying}
             style={{
@@ -294,13 +313,13 @@ export default function ServiceUnavailable() {
               justifyContent: "center",
               gap: 8,
               width: "100%",
-              maxWidth: 260,
-              padding: "14px 24px",
-              borderRadius: 14,
+              maxWidth: 230,
+              padding: "12px 20px",
+              borderRadius: 12,
               border: "none",
               fontFamily: "var(--font-heading, 'Rajdhani', sans-serif)",
               fontWeight: 700,
-              fontSize: "1.05rem",
+              fontSize: "0.98rem",
               letterSpacing: "0.02em",
               cursor: retrying ? "wait" : "pointer",
               color: "white",
@@ -360,15 +379,15 @@ export default function ServiceUnavailable() {
             justifyContent: "center",
             gap: 8,
             width: "100%",
-            maxWidth: 260,
-            padding: "12px 24px",
-            marginTop: 12,
-            borderRadius: 14,
+            maxWidth: 230,
+            padding: "11px 20px",
+            marginTop: 10,
+            borderRadius: 12,
             border: "1px solid rgba(37, 211, 102, 0.3)",
             background: "rgba(37, 211, 102, 0.08)",
             fontFamily: "var(--font-heading, 'Rajdhani', sans-serif)",
             fontWeight: 600,
-            fontSize: "0.95rem",
+            fontSize: "0.9rem",
             letterSpacing: "0.02em",
             cursor: "pointer",
             color: "#25d366",
@@ -405,9 +424,9 @@ export default function ServiceUnavailable() {
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
-            marginTop: 20,
+            marginTop: 16,
             color: "#94a3b8",
-            fontSize: "0.78rem",
+            fontSize: "0.73rem",
             fontFamily: "var(--font-heading, 'Rajdhani', sans-serif)",
             fontWeight: 500,
             letterSpacing: "0.04em",
