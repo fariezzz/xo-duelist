@@ -378,8 +378,8 @@ export default function MatchmakingPage() {
         onCountdownDone={() => {
           if (matchFound) {
             const suffix = matchFound.isVsAi 
-              ? `?origin=matchmaking&persona=${encodeURIComponent(matchFound.oppName)}` 
-              : '';
+              ? `?origin=matchmaking&persona=${encodeURIComponent(matchFound.oppName)}&intro=1` 
+              : '?intro=1';
             router.push(`/game/${matchFound.gameId}${suffix}`);
           }
         }}
