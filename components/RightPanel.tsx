@@ -15,7 +15,6 @@ export type FriendPresenceItem = {
 };
 
 type RightPanelProps = {
-  inviteCount: number;
   friends: FriendPresenceItem[];
   totalFriends: number;
   onlineCounts: { totalOnline: number; inMatchmaking: number; inGame: number };
@@ -64,7 +63,6 @@ function formatLastSeen(value?: string | null): string {
 }
 
 export default function RightPanel({
-  inviteCount,
   friends,
   totalFriends,
   onlineCounts,
@@ -104,12 +102,8 @@ useEffect(() => {
           <strong style={{ color: "#f59e0b" }}>{onlineCounts.inMatchmaking}</strong>
         </div>
         <div className="rp-info-row">
-          <span>Matches Active</span>
+          <span>In Match</span>
           <strong style={{ color: "#ef4444" }}>{onlineCounts.inGame}</strong>
-        </div>
-        <div className="rp-info-row">
-          <span>Match invites</span>
-          <strong style={{ color: inviteCount > 0 ? "#10b981" : "#94a3b8" }}>{inviteCount}</strong>
         </div>
       </section>
 
@@ -183,6 +177,9 @@ useEffect(() => {
 
                   {!pendingInviteId && friend.status === "matchmaking" && (
                     <span className="rp-muted-action">In Queue</span>
+                  )}
+                  {!pendingInviteId && friend.status === "in_room" && (
+                    <span className="rp-muted-action">In Room</span>
                   )}
                   {!pendingInviteId && friend.status === "in_game" && (
                     <span className="rp-muted-action">In Game</span>

@@ -184,8 +184,9 @@
 
 .connection-pill {
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: calc(var(--navbar-height, 72px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 150;
   display: flex;
   align-items: center;
@@ -202,6 +203,7 @@
   color: var(--text-muted);
   transition: all 0.3s ease;
   cursor: default;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
 }
 .connection-dot {
   width: 8px;
@@ -222,6 +224,33 @@
 .connection-dot.disconnected {
   background: #ef4444;
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+.connection-ping {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.connection-ping.excellent {
+  color: #34d399;
+}
+.connection-ping.good {
+  color: #fbbf24;
+}
+.connection-ping.poor {
+  color: #f87171;
+}
+.connection-ping.unknown {
+  color: #94a3b8;
+}
+.connection-ping svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+  flex-shrink: 0;
 }
 
 /* === RESULT MODAL === */

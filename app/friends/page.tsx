@@ -21,10 +21,16 @@ import {
 import Navbar from "../../components/Navbar";
 import { supabaseClient } from "../../lib/supabase";
 import { deleteFriendship, searchProfilesByKeyword, type FriendProfileRow } from "../../lib/friendsService";
-import { parseUserStatus, statusSortWeight } from "../../lib/statusUtils";
+import {
+  parseUserStatus,
+  resolveUserStatusForPresence,
+  statusSortWeight,
+  type UserStatus,
+} from "../../lib/statusUtils";
 import ConfirmDeleteModal from "../../components/friends/ConfirmDeleteModal";
 import { FriendRow, SearchPlayerRow } from "../../components/friends/FriendRow";
 import { useNotification } from "../../hooks/useNotification";
+import { getPresenceStatuses, subscribePresenceState } from "../../hooks/usePresence";
 
 type FriendRequest = {
   id: string;
@@ -61,6 +67,8 @@ type FriendListItem = {
   friendsSince: string;
 };
 
+type PresenceViewState = { ready: boolean; statuses: Map<string, UserStatus> };
+
 type BusyReason = "sender_busy" | "receiver_busy" | null;
 
 type FriendFilterTab = "all" | "online" | "offline";
@@ -84,14 +92,14 @@ function formatFriendError(message: string): string {
     return "Something went wrong. Please try again.";
   }
   const lower = normalized.toLowerCase();
-  if (lower.includes("sender_busy")) return "You are currently in a match or matchmaking.";
-  if (lower.includes("receiver_busy")) return "Your friend is in a match or matchmaking.";
+  if (lower.includes("sender_busy")) return "You are currently in a room, match, or matchmaking.";
+  if (lower.includes("receiver_busy")) return "Your friend is in a room, match, or matchmaking.";
   if (
     lower.includes("player_is_busy") ||
     lower.includes("one_player_already_in_match") ||
     lower.includes("one_player_already_matchmaking")
   ) {
-    return "Player is in a match or matchmaking.";
+    return "Player is in a room, match, or matchmaking.";
   }
   if (lower.includes("invite_expired")) return "That invite has expired.";
   if (lower.includes("invite_cancelled")) return "That invite was cancelled.";
@@ -278,6 +286,8 @@ export default function FriendsPage() {
   const [outgoingRequests, setOutgoingRequests] = useState<RequestWithProfile[]>([]);
   const [incomingInvites, setIncomingInvites] = useState<InviteWithProfile[]>([]);
   const [outgoingInvites, setOutgoingInvites] = useState<InviteWithProfile[]>([]);
+  const [presence, setPresence] = useState<PresenceViewState>({ ready: false, statuses: new Map() });
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
@@ -293,21 +303,57 @@ export default function FriendsPage() {
   const friendIds = useMemo(() => new Set(friendItems.map((f) => f.profile.id)), [friendItems]);
   const friendIdListKey = useMemo(() => [...friendItems.map((f) => f.profile.id)].sort().join(","), [friendItems]);
 
+  useEffect(() => {
+    const unsubscribe = subscribePresenceState((state, hasSynced) => {
+      setPresence({ ready: hasSynced, statuses: getPresenceStatuses(state) });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setPresenceNow(Date.now());
+    }, 15_000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const displayFriendItems = useMemo<FriendListItem[]>(
+    () =>
+      friendItems.map((item) => ({
+        ...item,
+        profile: {
+          ...item.profile,
+          status: resolveUserStatusForPresence(item.profile.status, item.profile.last_seen, {
+            presenceReady: presence.ready,
+            liveStatus: presence.statuses.get(item.profile.id),
+            now: presenceNow,
+          }),
+        },
+      })),
+    [friendItems, presence, presenceNow]
+  );
+
   const stats = useMemo(() => {
     let online = 0;
     let queue = 0;
     let match = 0;
-    for (const { profile } of friendItems) {
+    for (const { profile } of displayFriendItems) {
       const s = parseUserStatus(profile.status);
-      if (s === "online") online += 1;
+      if (s !== "offline") online += 1;
       if (s === "matchmaking") queue += 1;
       if (s === "in_game") match += 1;
     }
-    return { online, queue, match, total: friendItems.length };
-  }, [friendItems]);
+    return { online, queue, match, total: displayFriendItems.length };
+  }, [displayFriendItems]);
 
   const filteredSortedFriends = useMemo(() => {
-    let rows = [...friendItems];
+    let rows = [...displayFriendItems];
     if (friendFilter === "online") {
       rows = rows.filter(({ profile }) => parseUserStatus(profile.status) !== "offline");
     } else if (friendFilter === "offline") {
@@ -335,7 +381,7 @@ export default function FriendsPage() {
     });
 
     return rows;
-  }, [friendItems, friendFilter, friendSort]);
+  }, [displayFriendItems, friendFilter, friendSort]);
 
   function showNotice(message: string) {
     showToast({ type: 'success', title: 'Friends', message });

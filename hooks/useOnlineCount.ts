@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { UserStatus } from "../lib/statusUtils";
-import { subscribePresenceState } from "./usePresence";
-
-type PresenceMeta = {
-  user_id?: string;
-  status?: UserStatus;
-};
+import { getPresenceStatuses, subscribePresenceState } from "./usePresence";
 
 export function useOnlineCount() {
   const [counts, setCounts] = useState({
@@ -17,17 +11,17 @@ export function useOnlineCount() {
   });
 
   useEffect(() => {
-    const unsubscribe = subscribePresenceState((state) => {
-      let totalOnline = 0;
+    const unsubscribe = subscribePresenceState((state, hasSynced) => {
+      if (!hasSynced) return;
+
+      const statuses = getPresenceStatuses(state);
+      const totalOnline = statuses.size;
       let inMatchmaking = 0;
       let inGame = 0;
 
-      for (const metas of Object.values(state)) {
-        if (!Array.isArray(metas) || metas.length === 0) continue;
-        totalOnline += 1;
-        const latest = metas[metas.length - 1];
-        if (latest.status === "matchmaking") inMatchmaking += 1;
-        if (latest.status === "in_game") inGame += 1;
+      for (const status of statuses.values()) {
+        if (status === "matchmaking") inMatchmaking += 1;
+        if (status === "in_game") inGame += 1;
       }
 
       setCounts({ totalOnline, inMatchmaking, inGame });

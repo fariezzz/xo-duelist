@@ -23,6 +23,8 @@ function statusDisplay(status: UserStatus): { label: string; color: string } {
   switch (status) {
     case "online":
       return { label: "Online", color: "#34d399" };
+    case "in_room":
+      return { label: "In room", color: "#38bdf8" };
     case "matchmaking":
       return { label: "Searching for opponent", color: "#fbbf24" };
     case "in_game":
@@ -35,6 +37,7 @@ function statusDisplay(status: UserStatus): { label: string; color: string } {
 function inviteTooltip(status: UserStatus, pendingInvite: boolean): string | undefined {
   if (pendingInvite) return "Match invite already sent";
   if (status === "offline") return "Player is offline";
+  if (status === "in_room") return "Player is in a waiting room";
   if (status === "in_game") return "Currently in a match";
   if (status === "matchmaking") return "Searching for an opponent";
   return undefined;

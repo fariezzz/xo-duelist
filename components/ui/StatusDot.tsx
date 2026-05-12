@@ -10,7 +10,7 @@ type StatusDotProps = {
 };
 
 export default function StatusDot({ status, size = 10 }: StatusDotProps) {
-  const pulsing = status === "online" || status === "matchmaking";
+  const pulsing = status === "online" || status === "in_room" || status === "matchmaking";
 
   return (
     <>

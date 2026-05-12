@@ -21,6 +21,7 @@ import {
 import { supabaseClient } from '../../../lib/supabase';
 import Navbar from '../../../components/Navbar';
 import { useLobbyPresence, type LobbyPresenceEvent } from '../../../hooks/useLobbyPresence';
+import { useStatusManager } from '../../../hooks/useStatusManager';
 import VoiceChat from '../../../components/VoiceChat';
 
 
@@ -213,6 +214,7 @@ export default function LobbyRoomPage() {
   const [meId, setMeId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [meUsername, setMeUsername] = useState('');
+  const { setStatus } = useStatusManager(meId);
 
 
   const [playerProfiles, setPlayerProfiles] = useState<{
@@ -303,6 +305,16 @@ export default function LobbyRoomPage() {
     isHost,
     onEvent: handlePresenceEvent,
   });
+
+  useEffect(() => {
+    if (!meId || leftRoom || roomCancelled || room?.status !== 'waiting') return;
+    void setStatus('in_room', meId);
+  }, [meId, room?.status, leftRoom, roomCancelled, setStatus]);
+
+  useEffect(() => {
+    if (!meId || (!leftRoom && !roomCancelled)) return;
+    void setStatus('online', meId);
+  }, [meId, leftRoom, roomCancelled, setStatus]);
 
   // ── Main data fetch + postgres realtime subscription ──────────
   useEffect(() => {
@@ -743,38 +755,6 @@ export default function LobbyRoomPage() {
                   )}
                 </button>
               )}
-
-              {/* Ready status summary card */}
-              <div style={{
-                padding: '14px 16px', borderRadius: '12px',
-                background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.04)',
-              }}>
-                <div style={{ fontSize: '0.72rem', fontFamily: 'var(--font-heading)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '10px' }}>Ready Status</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {[
-                    { label: hostName, ready: hostReady, you: isHost },
-                    { label: room.player2_id ? guestName : '—', ready: guestReady, you: !isHost && !!room.player2_id },
-                  ].map((p, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {p.label}
-                        {p.you && <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '6px', background: 'rgba(124,58,237,0.15)', color: '#a78bfa', fontWeight: 700 }}>YOU</span>}
-                      </span>
-                      <span style={{
-                        fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: '0.78rem',
-                        color: p.ready ? '#10b981' : '#ef4444',
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                      }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.ready ? '#10b981' : '#ef4444', display: 'inline-block' }} />
-                        {p.ready ? 'Ready' : 'Not Ready'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div style={{ height: '1px', background: 'rgba(255,255,255,0.04)', margin: '2px 0' }} />
 
               {/* Exit / Cancel */}
               {isHost ? (

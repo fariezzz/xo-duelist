@@ -30,17 +30,17 @@ function formatInviteError(message: string) {
   const lower = message.toLowerCase();
 
   if (lower.includes("sender_busy")) {
-    return "You are currently in a match or matchmaking.";
+    return "You are currently in a room, match, or matchmaking.";
   }
   if (lower.includes("receiver_busy")) {
-    return "That player is currently in a match or matchmaking.";
+    return "That player is currently in a room, match, or matchmaking.";
   }
   if (
     lower.includes("player_is_busy") ||
     lower.includes("one_player_already_in_match") ||
     lower.includes("one_player_already_matchmaking")
   ) {
-    return "A player is currently in a match or matchmaking.";
+    return "A player is currently in a room, match, or matchmaking.";
   }
   if (lower.includes("invite_expired")) {
     return "This invite has expired.";

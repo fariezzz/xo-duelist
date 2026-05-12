@@ -26,11 +26,13 @@ import { supabaseClient } from "../../../lib/supabase";
 import { getPublicProfileByUsername, getPublicProfileMatches, deleteFriendship, type PublicMatchRow } from "../../../lib/friendsService";
 import ConfirmDeleteModal from "../../../components/friends/ConfirmDeleteModal";
 import SuccessChallengeModal from "../../../components/profile/SuccessChallengeModal";
-import { parseUserStatus, STATUS_LABEL } from "../../../lib/statusUtils";
+import { resolveUserStatusForPresence, STATUS_COLOR, STATUS_LABEL, type UserStatus } from "../../../lib/statusUtils";
 import StatusDot from "../../../components/ui/StatusDot";
+import { getPresenceStatuses, subscribePresenceState } from "../../../hooks/usePresence";
 
 type OpponentMap = Record<string, string>;
 type MatchTab = "all" | "pvp" | "ai";
+type PresenceViewState = { ready: boolean; statuses: Map<string, UserStatus> };
 
 function initials(name: string): string {
   const p = name.split(/[\s_]+/).filter(Boolean);
@@ -115,6 +117,8 @@ export default function PublicProfilePage() {
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [pendingInviteId, setPendingInviteId] = useState<string | null>(null);
+  const [presence, setPresence] = useState<PresenceViewState>({ ready: false, statuses: new Map() });
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     if (!username) { setError("Invalid profile."); setLoading(false); return; }
@@ -179,6 +183,26 @@ export default function PublicProfilePage() {
     const timeoutId = window.setTimeout(() => { void load(); }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [load]);
+
+  useEffect(() => {
+    const unsubscribe = subscribePresenceState((state, hasSynced) => {
+      setPresence({ ready: hasSynced, statuses: getPresenceStatuses(state) });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setPresenceNow(Date.now());
+    }, 15_000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -274,7 +298,7 @@ export default function PublicProfilePage() {
       await supabaseClient.rpc("expire_stale_invites");
       const { error: err } = await supabaseClient.rpc("send_game_invite", { input_receiver_id: profile.id });
       if (err) {
-        if (err.message.includes("sender_busy")) alert("You are already in a match or matchmaking.");
+        if (err.message.includes("sender_busy")) alert("You are already in a room, match, or matchmaking.");
         else if (err.message.includes("receiver_busy")) alert("This player is currently busy.");
         else if (err.message.includes("invite_already_pending")) alert("An invite is already pending.");
         else throw err;
@@ -556,7 +580,11 @@ export default function PublicProfilePage() {
     { key: "ai", label: "AI" },
   ];
 
-  const parsedStatus = parseUserStatus(profile.status);
+  const parsedStatus = resolveUserStatusForPresence(profile.status, profile.last_seen, {
+    presenceReady: presence.ready,
+    liveStatus: presence.statuses.get(profile.id),
+    now: presenceNow,
+  });
 
   return (
     <>
@@ -583,6 +611,17 @@ export default function PublicProfilePage() {
               <div className="pp-badges">
                 <TierBadge elo={profile.elo_rating} />
                 <span className="pp-elo-num">ELO {profile.elo_rating}</span>
+                <span
+                  className="pp-status-pill"
+                  style={{
+                    color: STATUS_COLOR[parsedStatus],
+                    borderColor: `${STATUS_COLOR[parsedStatus]}55`,
+                    background: `${STATUS_COLOR[parsedStatus]}18`,
+                  }}
+                >
+                  <StatusDot status={parsedStatus} size={8} />
+                  {STATUS_LABEL[parsedStatus]}
+                </span>
                 {isFriend && (
                   <span className="pp-friend-pill">
                     <Handshake size={13} aria-hidden="true" />
@@ -663,27 +702,29 @@ export default function PublicProfilePage() {
                             </>
                           )}
                         </button>
-                        {profile.status === "online" && (
-                          pendingInviteId ? (
-                            <button type="button" className="btn btn-ghost pp-edit" onClick={handleCancelInvite} disabled={challengeLoading}>
-                              {challengeLoading ? "..." : (
-                                <>
-                                  <X size={16} aria-hidden="true" />
-                                  Cancel
-                                </>
-                              )}
-                            </button>
-                          ) : (
-                            <button type="button" className="btn btn-secondary pp-edit" onClick={handleChallenge} disabled={challengeLoading}>
-                              {challengeLoading ? "..." : (
-                                <>
-                                  <Swords size={16} aria-hidden="true" />
-                                  Challenge
-                                </>
-                              )}
-                            </button>
-                          )
-                        )}
+                        {pendingInviteId ? (
+                          <button type="button" className="btn btn-ghost pp-edit" onClick={handleCancelInvite} disabled={challengeLoading}>
+                            {challengeLoading ? "..." : (
+                              <>
+                                <X size={16} aria-hidden="true" />
+                                Cancel
+                              </>
+                            )}
+                          </button>
+                        ) : parsedStatus === "online" ? (
+                          <button type="button" className="btn btn-secondary pp-edit" onClick={handleChallenge} disabled={challengeLoading}>
+                            {challengeLoading ? "..." : (
+                              <>
+                                <Swords size={16} aria-hidden="true" />
+                                Challenge
+                              </>
+                            )}
+                          </button>
+                        ) : parsedStatus !== "offline" ? (
+                          <button type="button" className="btn btn-ghost pp-edit" disabled>
+                            {STATUS_LABEL[parsedStatus]}
+                          </button>
+                        ) : null}
                       </>
                     ) : pendingFriendRequestId ? (
                       <button
@@ -830,7 +871,8 @@ export default function PublicProfilePage() {
         .pp-name { margin:0 0 8px; font-family:var(--font-heading); font-size:1.75rem; color:#f8fafc; }
         .pp-badges { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
         .pp-elo-num { font-family:var(--font-heading); font-weight:700; color:rgba(226,232,240,0.85); font-size:0.9rem; }
-        .pp-friend-pill { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); color:#4ade80; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-family:var(--font-heading); font-weight:700; display:inline-flex; align-items:center; gap:4px; }
+        .pp-status-pill, .pp-friend-pill { padding:2px 8px; border-radius:12px; font-size:0.75rem; font-family:var(--font-heading); font-weight:700; display:inline-flex; align-items:center; gap:5px; border:1px solid rgba(255,255,255,0.12); }
+        .pp-friend-pill { background:rgba(34,197,94,0.1); border-color:rgba(34,197,94,0.25); color:#4ade80; }
         .pp-copy-btn { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; color:#e2e8f0; transition:all 0.2s; }
         .pp-copy-btn:hover { background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.3); }
 
@@ -848,6 +890,7 @@ export default function PublicProfilePage() {
         .pp-danger-action { color:#f87171; border-color:rgba(248,113,113,0.32); background:rgba(248,113,113,0.06); }
         .pp-danger-action:hover:not(:disabled) { color:#fecaca; border-color:rgba(248,113,113,0.48); background:rgba(248,113,113,0.1); }
         .pp-friend-pill :global(svg),
+        .pp-status-pill :global(.status-dot),
         .pp-copy-btn :global(svg),
         .pp-meta-item :global(svg),
         .pp-ach-pill :global(svg),

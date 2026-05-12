@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Gauge,
@@ -27,7 +27,7 @@ import Sidebar, { SidebarNavKey } from "../../components/Sidebar";
 import { useStatusManager } from "../../hooks/useStatusManager";
 import { useFriendsStatus } from "../../hooks/useFriendsStatus";
 import { useOnlineCount } from "../../hooks/useOnlineCount";
-import { statusSortWeight, UserStatus } from "../../lib/statusUtils";
+import { statusSortWeight } from "../../lib/statusUtils";
 
 type Profile = {
   id: string;
@@ -42,18 +42,6 @@ type Profile = {
 type RankSummary = {
   position: number;
   total: number;
-};
-
-type FriendLinkRow = {
-  friend_id: string;
-};
-
-type ProfilePresenceRow = {
-  id: string;
-  username: string;
-  avatar_url: string | null;
-  status?: UserStatus | null;
-  last_seen?: string | null;
 };
 
 type RecentHistoryRow = {
@@ -102,7 +90,6 @@ function truncateName(name: string): string {
 
 export default function HomePage() {
   const router = useRouter();
-  const friendIdSetRef = useRef<Set<string>>(new Set());
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [rank, setRank] = useState<RankSummary | null>(null);
@@ -111,7 +98,6 @@ export default function HomePage() {
 
   const [activeNav, setActiveNav] = useState<SidebarNavKey | null>(null);
   const [pendingFriendRequestCount, setPendingFriendRequestCount] = useState(0);
-  const [arenaInviteCount, setArenaInviteCount] = useState(0);
   const [activeGameRoomId, setActiveGameRoomId] = useState<string | null>(null);
   const [failedHeroAvatarUrl, setFailedHeroAvatarUrl] = useState<string | null>(null);
 
@@ -179,57 +165,14 @@ export default function HomePage() {
     return { currentTier, nextTier, isMaxTier, progress, eloToNext };
   }, [profile?.elo_rating]);
 
-  async function loadFriendProfiles(userId: string) {
-    const { data: links, error: linksError } = await supabaseClient
-      .from("friends")
-      .select("friend_id")
-      .eq("user_id", userId);
-
-    if (linksError) throw linksError;
-
-    const rows = (links ?? []) as FriendLinkRow[];
-    const friendIds = rows.map((row) => row.friend_id);
-    friendIdSetRef.current = new Set(friendIds);
-
-    if (friendIds.length === 0) {
-      return;
-    }
-
-    const withPresence = await supabaseClient
-      .from("profiles")
-      .select("id, username, avatar_url, status, last_seen")
-      .in("id", friendIds);
-
-    let source = withPresence.data as ProfilePresenceRow[] | null;
-    if (withPresence.error) {
-      const fallback = await supabaseClient
-        .from("profiles")
-        .select("id, username, avatar_url")
-        .in("id", friendIds);
-
-      if (fallback.error) throw fallback.error;
-      source = (fallback.data ?? []) as ProfilePresenceRow[];
-    }
-
-    // Friends list is sourced from useFriendsStatus hook.
-  }
-
   async function refreshCounts(userId: string) {
-    const [requestCountRes, inviteCountRes] = await Promise.all([
-      supabaseClient
-        .from("friend_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("receiver_id", userId)
-        .eq("status", "pending"),
-      supabaseClient
-        .from("game_invites")
-        .select("id", { count: "exact", head: true })
-        .eq("receiver_id", userId)
-        .eq("status", "pending"),
-    ]);
+    const requestCountRes = await supabaseClient
+      .from("friend_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("receiver_id", userId)
+      .eq("status", "pending");
 
     setPendingFriendRequestCount(requestCountRes.count ?? 0);
-    setArenaInviteCount(inviteCountRes.count ?? 0);
   }
 
   async function refreshOutgoingInvites(userId: string) {
@@ -259,9 +202,9 @@ export default function HomePage() {
       if (err) {
         const msg = err.message?.toLowerCase() ?? "";
         if (msg.includes("sender_busy")) {
-          console.log("You are in a match or matchmaking.");
+          console.log("You are in a room, match, or matchmaking.");
         } else if (msg.includes("receiver_busy")) {
-          console.log("Your friend is in a match or matchmaking.");
+          console.log("Your friend is in a room, match, or matchmaking.");
         } else if (msg.includes("invite_already_pending")) {
           console.log("An invite is already pending.");
         } else if (msg.includes("not_friends")) {
@@ -381,7 +324,6 @@ export default function HomePage() {
     let cancelled = false;
     let requestChannel: ReturnType<typeof supabaseClient.channel> | null = null;
     let inviteChannel: ReturnType<typeof supabaseClient.channel> | null = null;
-    let friendsChannel: ReturnType<typeof supabaseClient.channel> | null = null;
     let roomsChannel: ReturnType<typeof supabaseClient.channel> | null = null;
     let matchmakingChannel: ReturnType<typeof supabaseClient.channel> | null = null;
 
@@ -464,7 +406,7 @@ export default function HomePage() {
           setActiveGameRoomId(nextRoom);
         }
 
-        await Promise.all([refreshCounts(uid), loadFriendProfiles(uid), refreshOutgoingInvites(uid)]);
+        await Promise.all([refreshCounts(uid), refreshOutgoingInvites(uid)]);
 
         try {
           const { data: recentRows, error: recentError } = await supabaseClient
@@ -545,27 +487,9 @@ export default function HomePage() {
             .channel(`dashboard-game-invites-${uid}`)
             .on(
               "postgres_changes",
-              { event: "*", schema: "public", table: "game_invites", filter: `receiver_id=eq.${uid}` },
-              () => {
-                void refreshCounts(uid);
-              }
-            )
-            .on(
-              "postgres_changes",
               { event: "*", schema: "public", table: "game_invites", filter: `sender_id=eq.${uid}` },
               () => {
                 void refreshOutgoingInvites(uid);
-              }
-            )
-            .subscribe();
-
-          friendsChannel = supabaseClient
-            .channel(`dashboard-friends-${uid}`)
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${uid}` },
-              () => {
-                void loadFriendProfiles(uid);
               }
             )
             .subscribe();
@@ -614,7 +538,6 @@ export default function HomePage() {
       cancelled = true;
       if (requestChannel) supabaseClient.removeChannel(requestChannel);
       if (inviteChannel) supabaseClient.removeChannel(inviteChannel);
-      if (friendsChannel) supabaseClient.removeChannel(friendsChannel);
       if (roomsChannel) supabaseClient.removeChannel(roomsChannel);
       if (matchmakingChannel) supabaseClient.removeChannel(matchmakingChannel);
     };
@@ -925,7 +848,6 @@ export default function HomePage() {
         </main>
 
         <RightPanel
-          inviteCount={arenaInviteCount}
           friends={friendsOnline}
           totalFriends={totalFriends}
           onlineCounts={onlineCounts}
