@@ -8,6 +8,7 @@ import ToastContainer from '../components/notifications/ToastContainer';
 import BackgroundMusic from '../components/BackgroundMusic';
 import PresenceHeartbeat from '../components/PresenceHeartbeat';
 import GlobalInviteListener from '../components/GlobalInviteListener';
+import ServiceUnavailable from '../components/ServiceUnavailable';
 
 const rajdhani = Rajdhani({
   weight: ['500', '600', '700'],
@@ -42,6 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* Global Persistent Audio */}
         <BackgroundMusic />
+
+        {/* Supabase health fallback overlay */}
+        <ServiceUnavailable />
       </body>
     </html>
   );

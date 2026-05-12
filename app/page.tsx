@@ -5,6 +5,7 @@ import { getAuthRedirectUrl } from '../lib/auth-redirect';
 import { useRouter } from 'next/navigation';
 import { useNotification } from '../hooks/useNotification';
 import { Eye, EyeOff } from 'lucide-react';
+import { useSupabaseHealth } from '../lib/supabaseHealth';
 
 type OAuthProvider = 'google' | 'github' | 'discord';
 
@@ -60,9 +61,15 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { showToast } = useNotification();
+  const { status: supabaseHealth } = useSupabaseHealth();
 
   // Redirect to dashboard if already logged in
   useEffect(() => {
+    // Skip session check while Supabase is unavailable — the overlay handles UX
+    if (supabaseHealth !== 'available') {
+      setCheckingSession(false);
+      return;
+    }
     (async () => {
       const { data } = await supabaseClient.auth.getSession();
       if (data.session) {
@@ -71,7 +78,7 @@ export default function Home() {
         setCheckingSession(false);
       }
     })();
-  }, [router]);
+  }, [router, supabaseHealth]);
 
   // Show callback status messages
   useEffect(() => {
@@ -109,6 +116,7 @@ export default function Home() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (supabaseHealth !== 'available') return;
     setLoading(true);
     setRememberMe(rememberMe);
 
@@ -151,6 +159,7 @@ export default function Home() {
   }
 
   async function handleOAuth(provider: OAuthProvider) {
+    if (supabaseHealth !== 'available') return;
     setOauthLoading(provider);
     try {
       const redirectTo = getAuthRedirectUrl('/auth/callback');
