@@ -31,7 +31,7 @@ export default function Board({
 
   return (
     <div
-      className="card"
+      className="card game-board-card"
       style={{
         padding: 'var(--board-padding)',
         display: 'inline-block',
@@ -40,7 +40,7 @@ export default function Board({
         boxShadow: '0 0 60px rgba(124, 58, 237, 0.08), 0 0 120px rgba(245, 158, 11, 0.04)',
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, max-content)', gap: 'var(--board-cell-gap)' }}>
+      <div className="game-board-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, max-content)', gap: 'var(--board-cell-gap)' }}>
         {board.map((v, i) => {
           const isSkillTarget = skillTargetCells.includes(i);
           // For BLIND curse: hide all if 'ALL', else hide opponent symbols

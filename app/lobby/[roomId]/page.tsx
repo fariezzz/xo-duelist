@@ -71,6 +71,7 @@ function LobbyPlayerCard({
 }) {
   return (
     <div
+      className="lobby-player-card"
       style={{
         padding: "12px 14px",
         borderRadius: "12px",
@@ -82,8 +83,9 @@ function LobbyPlayerCard({
         gap: "12px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+      <div className="lobby-player-main" style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
         <div
+          className="lobby-player-avatar"
           style={{
             width: 40,
             height: 40,
@@ -117,8 +119,9 @@ function LobbyPlayerCard({
           )}
         </div>
 
-        <div style={{ minWidth: 0 }}>
+        <div className="lobby-player-info" style={{ minWidth: 0 }}>
           <div
+            className="lobby-player-role"
             style={{
               fontSize: "0.68rem",
               color: "var(--text-muted)",
@@ -133,6 +136,7 @@ function LobbyPlayerCard({
           </div>
 
           <div
+            className="lobby-player-name"
             style={{
               fontFamily: "var(--font-heading)",
               fontWeight: 800,
@@ -150,6 +154,7 @@ function LobbyPlayerCard({
       </div>
 
       <div
+        className="lobby-player-ready-state"
         style={{
           flexShrink: 0,
           fontFamily: "var(--font-heading)",
@@ -549,21 +554,21 @@ export default function LobbyRoomPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ paddingTop: 'calc(var(--navbar-height) + 24px)', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
-        <div style={{ maxWidth: '820px', margin: '0 auto' }}>
+      <div className="page-container animate-fade-in lobby-room-page" style={{ paddingTop: 'calc(var(--navbar-height) + 24px)', paddingRight: '24px', paddingBottom: '24px', paddingLeft: '24px' }}>
+        <div className="lobby-room-shell" style={{ maxWidth: '820px', margin: '0 auto' }}>
 
           {/* Header row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
+          <div className="lobby-room-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
             <div>
-              <h1 className="heading" style={{ fontSize: '1.6rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 className="heading lobby-room-title" style={{ fontSize: '1.6rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Hourglass size={22} strokeWidth={2.35} aria-hidden="true" />
                 Waiting Room
               </h1>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
+              <p className="lobby-room-subtitle" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
                 {isPublicRoom ? 'Visible in lobby — anyone can join.' : 'Share the code to invite a friend.'}
               </p>
             </div>
-            <span style={{
+            <span className="lobby-room-visibility" style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '5px 14px', borderRadius: '20px', fontSize: '0.75rem',
               fontFamily: 'var(--font-heading)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -587,33 +592,33 @@ export default function LobbyRoomPage() {
           </div>
 
           {error && (
-            <div style={{ marginBottom: '16px', padding: '12px 18px', borderRadius: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '0.88rem' }}>
+            <div className="lobby-room-error" style={{ marginBottom: '16px', padding: '12px 18px', borderRadius: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '0.88rem' }}>
               {error}
             </div>
           )}
 
           {/* ── Two-Column Layout ─────────────────────────── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '16px', alignItems: 'start' }}>
+          <div className="lobby-room-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '16px', alignItems: 'start' }}>
 
             {/* LEFT — Room Info */}
-            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+            <div className="card lobby-room-info-card" style={{ padding: '0', overflow: 'hidden' }}>
 
               {/* Room Code / Public Info header bar */}
               {!isPublicRoom ? (
-                <div style={{
+                <div className="lobby-room-codebar" style={{
                   padding: '16px 20px',
                   background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(245,158,11,0.05))',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
                 }}>
                   <div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Room Code</div>
-                    <div style={{
+                    <div className="lobby-room-code-label" style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px' }}>Room Code</div>
+                    <div className="lobby-room-code-value" style={{
                       fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: '1.5rem', letterSpacing: '0.3em',
                       color: '#a78bfa', textShadow: '0 0 20px rgba(124,58,237,0.3)',
                     }}>{roomCode}</div>
                   </div>
-                  <button className="btn btn-ghost" onClick={copyCode} style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <button className="btn btn-ghost lobby-room-copy-btn" onClick={copyCode} style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     {copied ? (
                       <>
                         <Check size={14} strokeWidth={2.35} aria-hidden="true" />
@@ -628,7 +633,7 @@ export default function LobbyRoomPage() {
                   </button>
                 </div>
               ) : (
-                <div style={{
+                <div className="lobby-room-publicbar" style={{
                   padding: '14px 20px',
                   background: 'linear-gradient(135deg, rgba(124,58,237,0.06), rgba(16,185,129,0.04))',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
@@ -640,13 +645,13 @@ export default function LobbyRoomPage() {
               )}
 
               {/* Status chips */}
-              <div style={{ padding: '16px 20px 12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+              <div className="lobby-room-body" style={{ padding: '16px 20px 12px' }}>
+                <div className="lobby-room-status-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
                   {[
                     { label: 'Status', value: room.status, color: room.status === 'waiting' ? '#fbbf24' : '#10b981', joined: false },
                     { label: 'Opponent', value: room.player2_id ? 'Joined' : 'Waiting...', color: room.player2_id ? '#10b981' : '#94a3b8', joined: !!room.player2_id },
                   ].map((item, i) => (
-                    <div key={i} style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
+                    <div key={i} className="lobby-room-status-chip" style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
                       <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>{item.label}</div>
                       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', color: item.color, textTransform: 'capitalize', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                         {item.joined && <Check size={14} strokeWidth={2.35} aria-hidden="true" />}
@@ -657,7 +662,7 @@ export default function LobbyRoomPage() {
                 </div>
 
                 {/* Players — VS style */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                <div className="lobby-room-players" style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
                   <LobbyPlayerCard
                     role="Host"
                     name={hostName}
@@ -666,7 +671,7 @@ export default function LobbyRoomPage() {
                   />
 
                   {/* VS divider */}
-                  <div style={{
+                  <div className="lobby-room-vs" style={{
                     display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 0',
                   }}>
                     <div style={{ flex: 1, height: '1px', background: 'linear-gradient(to right, transparent, rgba(124,58,237,0.3), transparent)' }} />
@@ -689,11 +694,11 @@ export default function LobbyRoomPage() {
             </div>
 
             {/* RIGHT — Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="lobby-room-actions" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
               {/* Voice Chat */}
               {opponentId && (
-                <div style={{ marginBottom: '12px' }}>
+                <div className="lobby-room-voice" style={{ marginBottom: '12px' }}>
                   <VoiceChat
                     roomId={roomId}
                     meId={meId!}
@@ -708,7 +713,7 @@ export default function LobbyRoomPage() {
 
               {/* Ready toggle — big prominent button */}
               <button
-                className={`btn ${myReady ? 'btn-ghost' : 'btn-success'}`}
+                className={`btn lobby-room-ready-btn ${myReady ? 'btn-ghost' : 'btn-success'}`}
                 onClick={toggleReady}
                 disabled={readyLoading}
                 style={{
@@ -738,7 +743,7 @@ export default function LobbyRoomPage() {
               {/* Start Game — only host */}
               {isHost && (
                 <button
-                  className="btn btn-primary btn-lg"
+                  className="btn btn-primary btn-lg lobby-room-start-btn"
                   onClick={startRoom}
                   disabled={!canStart || startLoading}
                   style={{
@@ -759,7 +764,7 @@ export default function LobbyRoomPage() {
               {/* Exit / Cancel */}
               {isHost ? (
                 <button
-                  className="btn btn-ghost"
+                  className="btn btn-ghost lobby-room-secondary-btn"
                   onClick={() => setShowConfirm('cancel')}
                   style={{
                     width: '100%', padding: '12px', fontSize: '0.88rem', borderRadius: '12px',
@@ -773,7 +778,7 @@ export default function LobbyRoomPage() {
                 </button>
               ) : (
                 <button
-                  className="btn btn-ghost"
+                  className="btn btn-ghost lobby-room-secondary-btn"
                   onClick={() => setShowConfirm('exit')}
                   style={{
                     width: '100%', padding: '12px', fontSize: '0.88rem', borderRadius: '12px',
@@ -791,20 +796,10 @@ export default function LobbyRoomPage() {
         </div>
       </div>
 
-      {/* Responsive: stack on mobile */}
-      <style>{`
-        @media (max-width: 680px) {
-          div[style*="gridTemplateColumns: '1fr 300px'"],
-          div[style*="grid-template-columns"] {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
-
-
       {/* ── Confirm Dialog ──────────────────────────────── */}
       {showConfirm && (
         <div
+          className="lobby-room-confirm-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -816,7 +811,7 @@ export default function LobbyRoomPage() {
           }}
           onClick={() => setShowConfirm(null)}
         >
-          <div style={{
+          <div className="lobby-room-confirm-backdrop" style={{
             position: 'absolute',
             inset: 0,
             background: 'rgba(0,0,0,0.7)',
@@ -824,7 +819,7 @@ export default function LobbyRoomPage() {
             WebkitBackdropFilter: 'blur(8px)',
           }} />
           <div
-            className="animate-fade-in"
+            className="animate-fade-in lobby-room-confirm-card"
             onClick={(e) => e.stopPropagation()}
             style={{
               position: 'relative',
@@ -864,7 +859,7 @@ export default function LobbyRoomPage() {
                 ? 'Are you sure you want to cancel this room? All players will be removed.'
                 : 'Are you sure you want to leave this room? You can rejoin later if the room is still available.'}
             </p>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className="lobby-room-confirm-actions" style={{ display: 'flex', gap: '10px' }}>
               <button
                 className="btn btn-ghost"
                 onClick={() => setShowConfirm(null)}

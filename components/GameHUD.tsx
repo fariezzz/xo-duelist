@@ -15,11 +15,11 @@ export default function GameHUD({ turnCount, nextShuffleAt, activeCurse }: Props
   const shuffleSoon = turnsUntilShuffle <= 1 && turnsUntilShuffle > 0;
 
   return (
-    <div style={{
+    <div className="game-hud" style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: '20px', marginBottom: '12px', flexWrap: 'wrap',
     }}>
-      <div style={{
+      <div className="game-hud-chip" style={{
         fontFamily: 'var(--font-heading)', fontWeight: 600,
         fontSize: '0.85rem', color: 'var(--text-muted)',
         background: 'rgba(255,255,255,0.03)',
@@ -31,7 +31,7 @@ export default function GameHUD({ turnCount, nextShuffleAt, activeCurse }: Props
         Turn <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{turnCount}</span>
       </div>
 
-      <div style={{
+      <div className="game-hud-chip" style={{
         fontFamily: 'var(--font-heading)', fontWeight: 600,
         fontSize: '0.85rem',
         color: shuffleSoon ? '#f59e0b' : 'var(--text-muted)',
@@ -48,7 +48,7 @@ export default function GameHUD({ turnCount, nextShuffleAt, activeCurse }: Props
       </div>
 
       {activeCurse && (
-        <div style={{
+        <div className="game-hud-chip game-hud-curse" style={{
           fontFamily: 'var(--font-heading)', fontWeight: 600,
           fontSize: '0.85rem', color: '#ef4444',
           background: 'rgba(239,68,68,0.08)',

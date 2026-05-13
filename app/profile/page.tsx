@@ -248,7 +248,7 @@ export default function ProfilePage() {
               </div>
 
               {/* ── Stats card (enhanced) ── */}
-              <div className="card mp-stats-card">
+              <section className="mp-stats-card">
                 <div className="mp-stats-header">
                   <h2 className="mp-sec-title">
                     <BarChart3 size={18} aria-hidden="true" />
@@ -294,7 +294,7 @@ export default function ProfilePage() {
                 )}
 
                 <ProfileStats profile={profile} />
-              </div>
+              </section>
             </div>
 
             {/* Right column: Forms */}
@@ -346,6 +346,7 @@ export default function ProfilePage() {
         .mp-inner {
           max-width: 900px;
           margin: 0 auto;
+          width: 100%;
         }
 
         .mp-heading {
@@ -374,6 +375,7 @@ export default function ProfilePage() {
           display: flex;
           flex-direction: column;
           gap: 20px;
+          min-width: 0;
         }
 
         /* ── Hero Card ── */
@@ -394,6 +396,7 @@ export default function ProfilePage() {
           font-size: 1.2rem;
           color: var(--text-primary);
           margin-top: 12px;
+          overflow-wrap: anywhere;
         }
 
         .mp-hero-bio {
@@ -401,6 +404,7 @@ export default function ProfilePage() {
           font-size: 0.82rem;
           margin-top: 4px;
           line-height: 1.4;
+          overflow-wrap: anywhere;
         }
 
         .mp-badge-row {
@@ -456,6 +460,13 @@ export default function ProfilePage() {
           margin-top: 16px;
         }
 
+        .mp-hero-actions :global(.btn) {
+          width: 100%;
+          min-height: 42px;
+          white-space: normal;
+          line-height: 1.15;
+        }
+
         .mp-copy-btn {
           font-size: 0.82rem !important;
           transition: all 0.2s ease;
@@ -463,7 +474,9 @@ export default function ProfilePage() {
 
         /* ── Stats Card ── */
         .mp-stats-card {
-          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
         }
 
         .mp-stats-header {
@@ -552,8 +565,159 @@ export default function ProfilePage() {
 
         /* ── Responsive ── */
         @media (max-width: 768px) {
+          .mp-page {
+            padding: calc(var(--navbar-height) + 14px) 12px 28px;
+          }
+
+          .mp-heading {
+            gap: 8px;
+            font-size: 1.45rem;
+            line-height: 1.1;
+            margin-bottom: 5px;
+          }
+
+          .mp-heading :global(svg) {
+            width: 22px;
+            height: 22px;
+          }
+
+          .mp-subtitle {
+            margin: 0 0 14px;
+            font-size: 0.82rem;
+            line-height: 1.35;
+          }
+
           .mp-grid {
             grid-template-columns: 1fr !important;
+            gap: 12px;
+          }
+
+          .mp-left-col,
+          .mp-right-col {
+            gap: 12px;
+          }
+
+          .mp-hero {
+            padding: 16px 14px;
+            border-radius: 12px;
+          }
+
+          .mp-hero-name {
+            margin-top: 10px;
+            font-size: 1.12rem;
+            line-height: 1.15;
+          }
+
+          .mp-hero-bio {
+            max-width: 100%;
+            font-size: 0.78rem;
+          }
+
+          .mp-badge-row {
+            gap: 7px;
+            margin-top: 10px;
+          }
+
+          .mp-elo-progress-wrap {
+            margin-top: 12px;
+          }
+
+          .mp-elo-label-row {
+            gap: 10px;
+            font-size: 0.66rem;
+            line-height: 1.2;
+          }
+
+          .mp-hero-actions {
+            gap: 7px;
+            margin-top: 14px;
+          }
+
+          .mp-hero-actions :global(.btn) {
+            min-height: 40px;
+            padding: 9px 12px;
+            border-radius: 10px;
+            font-size: 0.86rem;
+          }
+
+          .mp-copy-btn {
+            font-size: 0.8rem !important;
+          }
+
+          .mp-stats-card {
+            gap: 9px;
+          }
+
+          .mp-stats-header {
+            margin-bottom: 0;
+          }
+
+          .mp-sec-title {
+            font-size: 0.98rem;
+          }
+
+          .mp-wld-bar-wrap {
+            margin-bottom: 0;
+          }
+
+          .mp-wld-legend {
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            justify-content: flex-start;
+            margin-top: 7px;
+          }
+
+          .mp-right-col :global(.card),
+          .mp-stats-card :global(.card) {
+            padding: 16px !important;
+            border-radius: 12px;
+          }
+
+          .mp-right-col :global(.input) {
+            min-height: 42px;
+            font-size: 16px;
+          }
+
+          .mp-right-col :global(textarea.input) {
+            min-height: 92px;
+          }
+
+          .mp-right-col :global(.btn) {
+            min-height: 42px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            white-space: normal;
+            line-height: 1.15;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .mp-page {
+            padding-left: 10px;
+            padding-right: 10px;
+          }
+
+          .mp-heading {
+            font-size: 1.34rem;
+          }
+
+          .mp-subtitle {
+            font-size: 0.78rem;
+          }
+
+          .mp-hero {
+            padding: 14px 12px;
+          }
+
+          .mp-elo-label-row {
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+          }
+
+          .mp-right-col :global(.card),
+          .mp-stats-card :global(.card) {
+            padding: 14px !important;
           }
         }
       `}</style>

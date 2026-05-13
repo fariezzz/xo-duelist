@@ -585,29 +585,29 @@ export default function HistoryPage() {
   return (
     <>
       <Navbar />
-      <div className="page-container animate-fade-in" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
-        <div style={{ maxWidth: '1040px', margin: '0 auto' }}>
-          <h1 className="heading" style={{ fontSize: '2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="page-container animate-fade-in history-page" style={{ padding: '32px 24px', paddingTop: 'calc(var(--navbar-height) + 32px)' }}>
+        <div className="history-shell" style={{ maxWidth: '1040px', margin: '0 auto' }}>
+          <h1 className="heading history-title" style={{ fontSize: '2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <History size={30} strokeWidth={2.4} color="var(--accent-violet-light)" />
             Match History
           </h1>
 
-          <div className="card" style={{ marginBottom: '14px', padding: '8px', display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
-            <div style={{ border: '1px solid rgba(16,185,129,0.3)', background: 'linear-gradient(135deg, rgba(16,185,129,0.14), rgba(16,185,129,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+          <div className="card history-stats-grid" style={{ marginBottom: '14px', padding: '8px', display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+            <div className="history-stat-card" style={{ border: '1px solid rgba(16,185,129,0.3)', background: 'linear-gradient(135deg, rgba(16,185,129,0.14), rgba(16,185,129,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
               <div className="history-stat-title">
                 <Trophy size={14} color="#10b981" />
                 Winrate 7D
               </div>
               <div style={{ color: '#10b981', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>{analytics.winRate7}%</div>
             </div>
-            <div style={{ border: '1px solid rgba(34,211,238,0.3)', background: 'linear-gradient(135deg, rgba(34,211,238,0.14), rgba(34,211,238,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+            <div className="history-stat-card" style={{ border: '1px solid rgba(34,211,238,0.3)', background: 'linear-gradient(135deg, rgba(34,211,238,0.14), rgba(34,211,238,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
               <div className="history-stat-title">
                 <CalendarDays size={14} color="#22d3ee" />
                 Winrate 30D
               </div>
               <div style={{ color: '#22d3ee', fontFamily: 'var(--font-heading)', fontSize: '1.55rem', fontWeight: 700, lineHeight: 1 }}>{analytics.winRate30}%</div>
             </div>
-            <div style={{ border: '1px solid rgba(251,191,36,0.3)', background: 'linear-gradient(135deg, rgba(251,191,36,0.14), rgba(251,191,36,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+            <div className="history-stat-card" style={{ border: '1px solid rgba(251,191,36,0.3)', background: 'linear-gradient(135deg, rgba(251,191,36,0.14), rgba(251,191,36,0.04))', borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
               <div className="history-stat-title">
                 <Flame size={14} color="#fbbf24" />
                 Current Streak
@@ -616,7 +616,7 @@ export default function HistoryPage() {
                 {analytics.currentStreak.label} {analytics.currentStreak.count}
               </div>
             </div>
-            <div style={{ border: `1px solid ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, background: `linear-gradient(135deg, ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.14)' : 'rgba(239,68,68,0.14)'}, rgba(255,255,255,0.03))`, borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
+            <div className="history-stat-card" style={{ border: `1px solid ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, background: `linear-gradient(135deg, ${analytics.avgDelta20 >= 0 ? 'rgba(16,185,129,0.14)' : 'rgba(239,68,68,0.14)'}, rgba(255,255,255,0.03))`, borderRadius: '12px', padding: '6px 10px', minHeight: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px' }}>
               <div className="history-stat-title">
                 <TrendingUp size={14} color={analytics.avgDelta20 >= 0 ? '#10b981' : '#ef4444'} />
                 Avg ELO Delta (20)
@@ -627,7 +627,7 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          <div className="card" style={{ padding: '10px 12px', marginBottom: '14px' }}>
+          <div className="card history-chart-card" style={{ padding: '10px 12px', marginBottom: '14px' }}>
             <button
               className="btn btn-ghost"
               style={{ width: '100%', justifyContent: 'space-between', padding: '8px 10px', fontSize: '0.85rem' }}
@@ -654,13 +654,13 @@ export default function HistoryPage() {
             )}
           </div>
 
-          <div className="card" style={{ marginBottom: '14px', padding: '12px', display: 'grid', gap: '10px' }}>
+          <div className="card history-filter-card" style={{ marginBottom: '14px', padding: '12px', display: 'grid', gap: '10px' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               <ListFilter size={15} color="#a78bfa" />
               Filters
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="history-filter-row" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {(['all', 'pvp', 'ai_ranked', 'ai_casual'] as const).map((mode) => {
                 const meta = modeFilterMeta[mode];
                 const Icon = meta.Icon;
@@ -678,7 +678,7 @@ export default function HistoryPage() {
               })}
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="history-filter-row" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {(['all', 'win', 'loss', 'draw'] as const).map((result) => {
                 const meta = resultFilterMeta[result];
                 const Icon = meta.Icon;
@@ -696,7 +696,7 @@ export default function HistoryPage() {
               })}
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="history-filter-row" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {(['all', '7d', '30d', '90d', 'custom'] as const).map((preset) => {
                 const meta = datePresetMeta[preset];
                 const Icon = meta.Icon;
@@ -721,7 +721,7 @@ export default function HistoryPage() {
             </div>
 
             {datePreset === 'custom' && (
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div className="history-custom-date-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <label style={{ display: 'grid', gap: '4px', color: 'var(--text-muted)', fontSize: '0.76rem' }}>
                   From
                   <input
@@ -748,7 +748,7 @@ export default function HistoryPage() {
               </div>
             )}
 
-            <div style={{ position: 'relative', maxWidth: '320px' }}>
+            <div className="history-search-wrap" style={{ position: 'relative', maxWidth: '320px' }}>
               <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
               <input
                 className="input"
@@ -760,7 +760,7 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          <div className="card" style={{ marginBottom: '16px', padding: '12px 18px', display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div className="card history-summary-card" style={{ marginBottom: '16px', padding: '12px 18px', display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             <span className="history-summary-item" style={{ color: '#10b981' }}><CircleCheck size={15} />Win: {summary.win}</span>
             <span className="history-summary-item" style={{ color: '#ef4444' }}><CircleX size={15} />Loss: {summary.loss}</span>
             <span className="history-summary-item" style={{ color: 'var(--text-muted)' }}><Flag size={15} />Draw: {summary.draw}</span>
@@ -768,8 +768,8 @@ export default function HistoryPage() {
             <span className="history-summary-item" style={{ color: 'var(--text-muted)', fontWeight: 600 }}><ListFilter size={15} />Filtered: {viewRows.length}</span>
           </div>
 
-          <div className="card" style={{ padding: '8px 0', overflow: 'auto' }}>
-            <table className="table-premium">
+          <div className="card history-table-card" style={{ padding: '8px 0', overflow: 'auto' }}>
+            <table className="table-premium history-table">
               <thead>
                 <tr>
                   <th style={{ paddingLeft: '20px' }}><span className="history-table-heading"><CircleCheck size={14} />Result</span></th>
@@ -818,17 +818,17 @@ export default function HistoryPage() {
                   const ResultIcon = resultMeta.Icon;
 
                   return (
-                    <tr key={r.id} style={{ background: rowBg }}>
-                      <td style={{ paddingLeft: '20px', fontFamily: 'var(--font-heading)', fontWeight: 700, color: resultColor }}>
+                    <tr key={r.id} className="history-match-row" style={{ background: rowBg }}>
+                      <td data-label="Result" style={{ paddingLeft: '20px', fontFamily: 'var(--font-heading)', fontWeight: 700, color: resultColor }}>
                         <span className="history-inline-icon">
                           <ResultIcon size={15} color={resultColor} />
                           {resultLabel}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Opponent">
                         <div
+                          className={`history-opponent-cell${!isAI ? " history-opp-link" : ""}`}
                           style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: !isAI ? 'pointer' : 'default' }}
-                          className={!isAI ? "history-opp-link" : ""}
                           onClick={!isAI ? () => router.push(`/profile/${encodeURIComponent(opponentProfile?.username ?? opponentId)}`) : undefined}
                           title={!isAI ? `View ${(opponentProfile?.username ?? opponentId)}'s profile` : undefined}
                         >
@@ -853,13 +853,13 @@ export default function HistoryPage() {
                           </div>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Mode">
                         <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.78rem', color: badge.color, background: badge.bg, padding: '4px 10px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                           <BadgeIcon size={13} />
                           {badge.label}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="ELO">
                         <span
                           style={{
                             fontFamily: 'var(--font-heading)',
@@ -870,12 +870,12 @@ export default function HistoryPage() {
                           {eloDelta > 0 ? `+${eloDelta}` : eloDelta}
                         </span>
                       </td>
-                      <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      <td data-label="Date" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                         {new Date(r.played_at).toLocaleString()}
                       </td>
-                      <td style={{ paddingRight: '20px' }}>
+                      <td data-label="Replay" style={{ paddingRight: '20px' }}>
                         <button
-                          className="btn btn-ghost"
+                          className="btn btn-ghost history-replay-button"
                           style={{ padding: '6px 10px', fontSize: '0.78rem' }}
                           title="Watch replay of this match"
                           aria-label="Watch replay of this match"
@@ -922,6 +922,7 @@ export default function HistoryPage() {
 
       {selectedMatch && (
         <div
+          className="history-replay-overlay"
           onClick={closeReplay}
           style={{
             position: 'fixed',
@@ -937,35 +938,35 @@ export default function HistoryPage() {
           }}
         >
           <div
-            className="card"
+            className="card history-replay-card"
             onClick={(e) => e.stopPropagation()}
             style={{ width: '100%', maxWidth: '980px', padding: '20px', borderColor: 'rgba(124,58,237,0.35)', maxHeight: '92vh', overflow: 'auto' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.15rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <div className="history-replay-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <div className="history-replay-title" style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.15rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                 <Play size={18} color="#a78bfa" />
                 Match Replay & Detail
               </div>
-              <button className="btn btn-ghost" style={{ padding: '6px 10px' }} onClick={closeReplay}>
+              <button className="btn btn-ghost history-replay-close" style={{ padding: '6px 10px' }} onClick={closeReplay}>
                 <X size={15} />
                 Close
               </button>
             </div>
 
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <div className="history-replay-date" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
               <CalendarDays size={15} />
               {new Date(selectedMatch.played_at).toLocaleString()}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+            <div className="history-replay-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
               <div>
                 {replayFrames.length > 0 ? (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+                    <div className="history-replay-board-wrap" style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
                       <Board board={selectedBoard} onMove={NOOP_MOVE} disabled />
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <div className="history-replay-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                       <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <Timer size={14} />
                         Move {safeReplayIndex + 1} / {replayFrames.length}
@@ -978,7 +979,7 @@ export default function HistoryPage() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div className="history-replay-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <button
                         className="btn btn-ghost"
                         style={{ padding: '6px 10px', fontSize: '0.78rem' }}
@@ -1031,7 +1032,7 @@ export default function HistoryPage() {
                     </div>
                   </>
                 ) : selectedBoardSnapshot ? (
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div className="history-replay-board-wrap" style={{ display: 'flex', justifyContent: 'center' }}>
                     <Board board={selectedBoard} onMove={NOOP_MOVE} disabled />
                   </div>
                 ) : (
@@ -1041,8 +1042,8 @@ export default function HistoryPage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gap: '10px', alignContent: 'start' }}>
-                <div className="card" style={{ padding: '12px' }}>
+              <div className="history-replay-facts" style={{ display: 'grid', gap: '10px', alignContent: 'start' }}>
+                <div className="card history-replay-fact-card" style={{ padding: '12px' }}>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                     <Flag size={16} color="#a78bfa" />
                     Match Facts
@@ -1064,7 +1065,7 @@ export default function HistoryPage() {
                   )}
                 </div>
 
-                <div className="card" style={{ padding: '12px' }}>
+                <div className="card history-replay-fact-card" style={{ padding: '12px' }}>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, marginBottom: '8px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                     <Swords size={16} color="#10b981" />
                     Head to Head
@@ -1131,6 +1132,283 @@ export default function HistoryPage() {
 
         .history-opp-link:hover .history-opp-name {
           color: #a78bfa !important;
+        }
+
+        @media (max-width: 768px) {
+          .history-page {
+            padding: calc(var(--navbar-height) + 14px) 12px 24px !important;
+          }
+
+          .history-shell {
+            max-width: 100% !important;
+          }
+
+          .history-title {
+            font-size: 1.45rem !important;
+            margin-bottom: 12px !important;
+            line-height: 1.1;
+          }
+
+          .history-title svg {
+            width: 24px;
+            height: 24px;
+          }
+
+          .history-stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 7px !important;
+            padding: 7px !important;
+            border-radius: 12px !important;
+          }
+
+          .history-stat-card {
+            min-height: 58px !important;
+            padding: 8px 9px !important;
+            border-radius: 10px !important;
+          }
+
+          .history-stat-title {
+            font-size: 0.6rem;
+            gap: 5px;
+            line-height: 1.1;
+          }
+
+          .history-stat-card > div:last-child {
+            font-size: 1.35rem !important;
+          }
+
+          .history-chart-card,
+          .history-filter-card,
+          .history-summary-card {
+            border-radius: 12px !important;
+          }
+
+          .history-filter-card {
+            padding: 10px !important;
+            gap: 9px !important;
+          }
+
+          .history-filter-row {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px !important;
+          }
+
+          .history-filter-row .btn {
+            width: 100%;
+            min-width: 0;
+            justify-content: center;
+            padding: 8px 7px !important;
+            font-size: 0.74rem !important;
+            white-space: nowrap;
+          }
+
+          .history-custom-date-row {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px !important;
+          }
+
+          .history-custom-date-row label {
+            min-width: 0;
+          }
+
+          .history-custom-date-row input {
+            min-width: 0 !important;
+            width: 100%;
+          }
+
+          .history-search-wrap {
+            max-width: none !important;
+          }
+
+          .history-summary-card {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7px !important;
+            padding: 10px !important;
+            margin-bottom: 12px !important;
+          }
+
+          .history-summary-item {
+            justify-content: center;
+            min-height: 32px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.03);
+            font-size: 0.8rem;
+          }
+
+          .history-table-card {
+            padding: 0 !important;
+            overflow: visible !important;
+            background: transparent !important;
+            border: 0 !important;
+          }
+
+          .history-table,
+          .history-table thead,
+          .history-table tbody,
+          .history-table tr,
+          .history-table td {
+            display: block;
+            width: 100%;
+          }
+
+          .history-table thead {
+            display: none;
+          }
+
+          .history-table tbody {
+            display: grid;
+            gap: 10px;
+          }
+
+          .history-match-row {
+            padding: 4px 12px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            background-color: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            overflow: hidden;
+          }
+
+          .history-table tbody td {
+            border: 0 !important;
+            padding: 9px 0 !important;
+          }
+
+          .history-table tbody td[data-label] {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 38px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+          }
+
+          .history-table tbody td[data-label]:first-child {
+            border-top: 0 !important;
+          }
+
+          .history-table tbody td[data-label]::before {
+            content: attr(data-label);
+            flex-shrink: 0;
+            color: var(--text-muted);
+            font-family: var(--font-heading);
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+
+          .history-table tbody td[data-label="Opponent"] {
+            align-items: flex-start;
+          }
+
+          .history-table tbody td[data-label="Opponent"]::before {
+            padding-top: 7px;
+          }
+
+          .history-opponent-cell {
+            min-width: 0;
+            justify-content: flex-end;
+            text-align: right;
+          }
+
+          .history-opponent-cell > div:last-child {
+            min-width: 0;
+            align-items: flex-end;
+          }
+
+          .history-replay-button {
+            min-height: 34px;
+            padding: 7px 10px !important;
+          }
+
+          .history-replay-overlay {
+            align-items: flex-start !important;
+            padding: 8px !important;
+            overflow-y: auto;
+          }
+
+          .history-replay-card {
+            max-height: calc(100dvh - 16px) !important;
+            padding: 12px !important;
+            border-radius: 14px !important;
+          }
+
+          .history-replay-header {
+            gap: 10px;
+            margin-bottom: 10px !important;
+          }
+
+          .history-replay-title {
+            min-width: 0;
+            font-size: 1rem !important;
+            line-height: 1.15;
+          }
+
+          .history-replay-close {
+            flex-shrink: 0;
+            min-height: 34px;
+          }
+
+          .history-replay-date {
+            margin-bottom: 10px !important;
+            font-size: 0.78rem !important;
+            line-height: 1.3;
+          }
+
+          .history-replay-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+
+          .history-replay-board-wrap {
+            overflow-x: hidden;
+            margin-bottom: 10px !important;
+          }
+
+          .history-replay-meta {
+            justify-content: center !important;
+            text-align: center;
+            gap: 6px !important;
+          }
+
+          .history-replay-controls {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 7px !important;
+          }
+
+          .history-replay-controls .btn {
+            width: 100%;
+            min-width: 0;
+            justify-content: center;
+            padding: 8px 6px !important;
+          }
+
+          .history-replay-fact-card {
+            padding: 10px !important;
+            border-radius: 12px !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .history-stats-grid,
+          .history-summary-card,
+          .history-custom-date-row {
+            grid-template-columns: 1fr !important;
+          }
+
+          .history-filter-row {
+            grid-template-columns: 1fr !important;
+          }
+
+          .history-replay-controls {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
 
         @keyframes history-spin {

@@ -78,6 +78,8 @@ export default function Cell({
     overflow: 'hidden',
     opacity: disabled && !skillTargetMode ? 0.85 : 1,
     animation,
+    touchAction: 'manipulation',
+    WebkitTapHighlightColor: 'transparent',
   };
 
   if (isShuffling) {

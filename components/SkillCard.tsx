@@ -13,7 +13,7 @@ type Props = {
 export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props) {
   if (!skill) {
     return (
-      <div style={{
+      <div className="skill-card skill-card-empty" style={{
         background: 'rgba(255,255,255,0.02)',
         border: '1px dashed rgba(255,255,255,0.1)',
         borderRadius: '12px',
@@ -37,7 +37,7 @@ export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props)
   const meta = SKILL_META[skill];
 
   return (
-    <div style={{
+    <div className="skill-card" style={{
       background: 'rgba(124, 58, 237, 0.08)',
       border: '1px solid rgba(124, 58, 237, 0.3)',
       borderRadius: '12px',
@@ -49,7 +49,7 @@ export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props)
       boxShadow: isNew ? '0 0 25px rgba(245,158,11,0.3)' : '0 0 15px rgba(124,58,237,0.1)',
       transition: 'all 0.3s ease',
     }}>
-      <div style={{
+      <div className="skill-card-icon" style={{
         width: '44px',
         height: '44px',
         display: 'flex',
@@ -62,14 +62,14 @@ export default function SkillCard({ skill, onUseSkill, disabled, isNew }: Props)
         <SkillIcon skill={skill} size={24} />
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
+      <div className="skill-card-copy" style={{ flex: 1, minWidth: 0 }}>
+        <div className="skill-card-title" style={{
           fontFamily: 'var(--font-heading)', fontWeight: 700,
           fontSize: '1rem', color: 'var(--text-primary)',
         }}>
           {meta.name}
         </div>
-        <div style={{
+        <div className="skill-card-desc" style={{
           fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px',
         }}>
           {meta.desc}

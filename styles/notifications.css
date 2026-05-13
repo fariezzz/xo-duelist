@@ -366,6 +366,19 @@
 }
 
 @media (max-width: 768px) {
+  .notification-panel {
+    position: fixed !important;
+    top: calc(var(--navbar-height, 72px) + 8px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-height: calc(100vh - var(--navbar-height, 72px) - 20px) !important;
+    max-height: calc(100dvh - var(--navbar-height, 72px) - 20px) !important;
+    border-radius: 12px !important;
+    transform-origin: top center !important;
+    z-index: 250 !important;
+  }
+
   .toast-container {
     top: 10px;
     left: 10px;

@@ -1029,6 +1029,7 @@ export default function GameRoom() {
             <aside className="game-side">
               {/* Turn Indicator */}
               <div
+                className="game-turn-card"
                 style={{
                   textAlign: 'center',
                   marginBottom: '4px',
@@ -1066,7 +1067,7 @@ export default function GameRoom() {
               {/* Player Cards */}
               <div className="game-player-stack">
                 <PlayerCard username={playerProfiles?.p1.username ?? 'Player 1'} elo={playerProfiles?.p1.elo ?? 1000} symbol="X" you={room.player1_id === meId} active={room.current_turn === room.player1_id && room.status === 'ongoing'} avatarUrl={playerProfiles?.p1.avatarUrl} />
-                <div style={{ textAlign: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-muted)' }}>VS</div>
+                <div className="game-vs-divider" style={{ textAlign: 'center', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-muted)' }}>VS</div>
                 <PlayerCard username={playerProfiles?.p2.username ?? 'Player 2'} elo={playerProfiles?.p2.elo ?? 1000} symbol="O" you={room.player2_id === meId} active={room.current_turn === room.player2_id && room.status === 'ongoing'} avatarUrl={playerProfiles?.p2.avatarUrl} />
                 {/* AI Skill Ready badge */}
                 {room.is_vs_ai && (() => {
@@ -1100,7 +1101,7 @@ export default function GameRoom() {
               <GameHUD turnCount={turnCount} nextShuffleAt={effectiveNextShuffleAt} activeCurse={isMyTurn ? myCurse : null} />
 
               {!isMobile && (
-                <>
+                <div className="game-desktop-timer-block">
                   {/* Timer */}
                   <div style={{ marginBottom: '2px' }}>
                     <Timer
@@ -1132,18 +1133,18 @@ export default function GameRoom() {
                       {room.is_vs_ai ? 'AI' : 'Opponent'} timeout: {oppTimeouts}/2
                     </span>
                   </div>
-                </>
+                </div>
               )}
 
               {fumbleWarning && (
-                <div className="animate-fumble-shake" style={{ textAlign: 'center', color: '#ef4444', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <div className="animate-fumble-shake game-inline-alert" style={{ textAlign: 'center', color: '#ef4444', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                   <CurseIcon curse="FUMBLE" size={15} />
                   FUMBLE! Your move was placed randomly.
                 </div>
               )}
 
               {skillTargetMode && (
-                <div style={{ textAlign: 'center' }}>
+                <div className="game-skill-target" style={{ textAlign: 'center' }}>
                   <span style={{ color: '#a78bfa', fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     <SkillIcon skill={activeSkillUse!} size={15} />
                     Select target for {SKILL_META[activeSkillUse!].name}
@@ -1181,6 +1182,31 @@ export default function GameRoom() {
             <section className="game-board-wrap">
               {isMobile && (
                 <div className="game-timer-mobile">
+                  <div className="game-mobile-turn-pill">
+                    {room.status === 'ongoing' ? (
+                      isMyTurn ? (
+                        <>
+                          <Swords size={15} />
+                          Your Turn
+                        </>
+                      ) : room.is_vs_ai && aiThinking ? (
+                        <>
+                          <Bot size={15} />
+                          AI is thinking...
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={15} />
+                          {"Opponent's Turn"}
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <Flag size={15} />
+                        Game Over
+                      </>
+                    )}
+                  </div>
                   <div style={{ marginBottom: '2px' }}>
                     <Timer
                       key={turnTimerKey}

@@ -854,7 +854,7 @@ export default function PublicProfilePage() {
 
       <style jsx>{`
         .pp-page { position:relative; z-index:1; min-height:100vh; padding:calc(var(--navbar-height) + 40px) 18px 40px; }
-        .pp-inner { max-width:720px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
+        .pp-inner { width:100%; max-width:720px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
 
         /* ── Hero ── */
         .pp-hero { display:flex; flex-wrap:wrap; align-items:center; gap:20px; padding:22px; }
@@ -863,12 +863,12 @@ export default function PublicProfilePage() {
         .pp-avatar span:first-child { font-family:var(--font-heading); font-size:1.5rem; font-weight:800; color:#f8fafc; }
         .pp-status-wrap { position:absolute; bottom:2px; right:2px; z-index:2; border-radius:50%; background:var(--card-bg, #1e1b2e); padding:3px; display:flex; align-items:center; justify-content:center; }
         .pp-head-text { flex:1; min-width:200px; }
-        .pp-bio { color:var(--text-muted); font-size:0.85rem; margin:0 0 8px; line-height:1.5; }
+        .pp-bio { color:var(--text-muted); font-size:0.85rem; margin:0 0 8px; line-height:1.5; overflow-wrap:anywhere; }
         .pp-meta-row { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:10px; }
         .pp-meta-item { display:inline-flex; align-items:center; gap:4px; font-family:var(--font-heading); font-size:0.78rem; color:var(--text-muted); font-weight:500; }
         .pp-meta-item strong { color:#e2e8f0; font-weight:700; }
         .pp-meta-dim { color:rgba(148,163,184,0.7); font-weight:400; }
-        .pp-name { margin:0 0 8px; font-family:var(--font-heading); font-size:1.75rem; color:#f8fafc; }
+        .pp-name { margin:0 0 8px; font-family:var(--font-heading); font-size:1.75rem; color:#f8fafc; overflow-wrap:anywhere; }
         .pp-badges { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
         .pp-elo-num { font-family:var(--font-heading); font-weight:700; color:rgba(226,232,240,0.85); font-size:0.9rem; }
         .pp-status-pill, .pp-friend-pill { padding:2px 8px; border-radius:12px; font-size:0.75rem; font-family:var(--font-heading); font-weight:700; display:inline-flex; align-items:center; gap:5px; border:1px solid rgba(255,255,255,0.12); }
@@ -886,7 +886,7 @@ export default function PublicProfilePage() {
         .pp-achievements { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
         .pp-ach-pill { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); font-family:var(--font-heading); font-size:0.7rem; font-weight:600; color:#e2e8f0; transition:opacity 0.3s; white-space:nowrap; }
         .pp-hero-actions { margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
-        .pp-edit { margin-top:4px; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+        .pp-edit { margin-top:4px; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:40px; }
         .pp-danger-action { color:#f87171; border-color:rgba(248,113,113,0.32); background:rgba(248,113,113,0.06); }
         .pp-danger-action:hover:not(:disabled) { color:#fecaca; border-color:rgba(248,113,113,0.48); background:rgba(248,113,113,0.1); }
         .pp-friend-pill :global(svg),
@@ -910,13 +910,14 @@ export default function PublicProfilePage() {
         .pp-seg-d { background:#6b7280; }
 
         .pp-stat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:14px; }
+        .pp-stat-grid > div { min-width:0; padding:11px 12px; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
         .pp-label { display:block; font-size:0.72rem; letter-spacing:0.08em; text-transform:uppercase; color:rgba(148,163,184,0.95); font-family:var(--font-heading); font-weight:700; margin-bottom:4px; }
         .pp-stat-grid strong { font-family:var(--font-heading); font-size:1.2rem; color:#f8fafc; }
         .pp-total-games { text-align:center; margin-top:14px; font-family:var(--font-heading); font-size:0.82rem; font-weight:600; color:var(--text-muted); padding:8px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); }
         .pp-muted { color:rgba(148,163,184,0.92); font-size:0.9rem; margin:0; }
 
         /* ── Match History Tabs ── */
-        .pp-tabs { display:flex; gap:4px; margin-bottom:14px; padding:3px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06); }
+        .pp-tabs { display:flex; gap:4px; margin-bottom:14px; padding:3px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow:hidden; }
         .pp-tab { flex:1; padding:7px 12px; border:none; background:transparent; color:var(--text-muted); font-family:var(--font-heading); font-size:0.78rem; font-weight:600; cursor:pointer; transition:all 0.2s; }
         .pp-tab:hover { color:#e2e8f0; background:rgba(255,255,255,0.04); }
         .pp-tab-active { color:#a78bfa; background:rgba(167,139,250,0.12); border-bottom:2px solid #a78bfa; }
@@ -939,8 +940,249 @@ export default function PublicProfilePage() {
         .pp-date { color:rgba(148,163,184,0.9); font-size:0.78rem; white-space:nowrap; }
 
         @media (max-width: 600px) {
-          .pp-match-row { grid-template-columns:28px minmax(0,1fr); grid-template-rows:auto auto; }
-          .pp-mode, .pp-date, .pp-elo-delta { grid-column:2; }
+          .pp-page {
+            padding: calc(var(--navbar-height) + 14px) 12px 28px;
+          }
+
+          .pp-inner {
+            gap: 10px;
+          }
+
+          .pp-hero {
+            display: grid;
+            grid-template-columns: 74px minmax(0, 1fr);
+            align-items: start;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 12px;
+          }
+
+          .pp-avatar {
+            width: 74px;
+            height: 74px;
+            border-width: 1px;
+          }
+
+          .pp-avatar span:first-child {
+            font-size: 1.15rem;
+          }
+
+          .pp-status-wrap {
+            right: 0;
+            bottom: 0;
+            padding: 2px;
+          }
+
+          .pp-head-text {
+            min-width: 0;
+          }
+
+          .pp-name {
+            margin-bottom: 6px;
+            font-size: 1.36rem;
+            line-height: 1.05;
+          }
+
+          .pp-bio {
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+            line-height: 1.35;
+          }
+
+          .pp-badges {
+            gap: 6px;
+            margin-bottom: 8px;
+          }
+
+          .pp-status-pill,
+          .pp-friend-pill {
+            padding: 2px 7px;
+            font-size: 0.68rem;
+            line-height: 1.2;
+          }
+
+          .pp-copy-btn {
+            width: 31px;
+            height: 31px;
+            border-radius: 8px;
+          }
+
+          .pp-meta-row {
+            display: grid;
+            gap: 6px;
+            margin-bottom: 9px;
+          }
+
+          .pp-meta-item {
+            min-width: 0;
+            font-size: 0.72rem;
+            line-height: 1.2;
+          }
+
+          .pp-elo-progress {
+            margin-bottom: 9px;
+          }
+
+          .pp-elo-labels {
+            gap: 8px;
+            font-size: 0.64rem;
+          }
+
+          .pp-achievements {
+            gap: 5px;
+            margin-bottom: 9px;
+          }
+
+          .pp-ach-pill {
+            max-width: 100%;
+            padding: 3px 8px;
+            font-size: 0.66rem;
+          }
+
+          .pp-hero-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+            gap: 7px;
+            margin-top: 2px;
+          }
+
+          .pp-edit {
+            width: 100%;
+            min-height: 38px;
+            margin-top: 0;
+            padding: 8px 10px;
+            border-radius: 10px;
+            font-size: 0.84rem;
+            white-space: normal;
+            line-height: 1.15;
+          }
+
+          .pp-stats,
+          .pp-history {
+            padding: 14px;
+            border-radius: 12px;
+          }
+
+          .pp-sec-title {
+            margin-bottom: 11px;
+            font-size: 0.98rem;
+          }
+
+          .pp-wld-wrap {
+            margin-bottom: 10px;
+          }
+
+          .pp-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+          }
+
+          .pp-stat-grid > div {
+            padding: 9px 10px;
+            border-radius: 9px;
+          }
+
+          .pp-label {
+            font-size: 0.64rem;
+            letter-spacing: 0.07em;
+          }
+
+          .pp-stat-grid strong {
+            font-size: 1.08rem;
+          }
+
+          .pp-total-games {
+            margin-top: 10px;
+            padding: 7px;
+            font-size: 0.76rem;
+          }
+
+          .pp-tabs {
+            margin-bottom: 11px;
+          }
+
+          .pp-tab {
+            min-height: 36px;
+            padding: 7px 8px;
+            font-size: 0.74rem;
+          }
+
+          .pp-match-row {
+            grid-template-columns: 30px minmax(0, 1fr) auto;
+            grid-template-rows: auto auto;
+            gap: 4px 9px;
+            padding: 10px 0;
+            font-size: 0.82rem;
+          }
+
+          .pp-res {
+            grid-row: 1 / span 2;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+          }
+
+          .pp-opp {
+            grid-column: 2;
+            grid-row: 1;
+            min-width: 0;
+          }
+
+          .pp-elo-delta {
+            grid-column: 3;
+            grid-row: 1;
+            justify-self: end;
+          }
+
+          .pp-mode {
+            grid-column: 2;
+            grid-row: 2;
+            font-size: 0.72rem;
+          }
+
+          .pp-date {
+            grid-column: 3;
+            grid-row: 2;
+            justify-self: end;
+            font-size: 0.72rem;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .pp-page {
+            padding-left: 10px;
+            padding-right: 10px;
+          }
+
+          .pp-hero {
+            grid-template-columns: 1fr;
+            justify-items: center;
+            text-align: center;
+          }
+
+          .pp-head-text {
+            width: 100%;
+          }
+
+          .pp-badges,
+          .pp-meta-row,
+          .pp-achievements {
+            justify-content: center;
+          }
+
+          .pp-meta-item {
+            justify-content: center;
+          }
+
+          .pp-elo-labels {
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+          }
+
+          .pp-hero-actions {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </>

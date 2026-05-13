@@ -178,7 +178,7 @@ export default function LobbyPage() {
           )}
 
           {/* ── Action Cards: Create + Join ────────────── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
+          <div className="lobby-action-grid">
 
             {/* Create Room */}
             <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
@@ -523,6 +523,13 @@ export default function LobbyPage() {
       )}
       
       <style jsx global>{`
+        .lobby-action-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+          margin-bottom: 24px;
+        }
+
         .lobby-host-link:hover .lobby-host-avatar {
           transform: scale(1.08);
           border-color: rgba(167, 139, 250, 0.5) !important;
@@ -530,6 +537,12 @@ export default function LobbyPage() {
         
         .lobby-host-link:hover .lobby-host-name {
           color: #a78bfa !important;
+        }
+
+        @media (max-width: 768px) {
+          .lobby-action-grid {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </>

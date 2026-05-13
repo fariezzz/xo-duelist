@@ -273,6 +273,7 @@ export default function NotificationPanel({
   return (
     <div
       ref={panelRef}
+      className="notification-panel"
       style={{
         position: "absolute",
         top: "calc(100% + 10px)",

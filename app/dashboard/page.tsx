@@ -21,6 +21,7 @@ import TierBadge from "../../components/TierBadge";
 import { getRandomPersona } from "../../lib/aiPlayer";
 import ArenaCard from "../../components/ArenaCard";
 import RightPanel, {
+  ArenaStatusCard,
   FriendPresenceItem,
 } from "../../components/RightPanel";
 import Sidebar, { SidebarNavKey } from "../../components/Sidebar";
@@ -720,26 +721,32 @@ export default function HomePage() {
             </div>
 
             <div className="hero-right">
-              <div className="hero-elo-label">
-                <Gauge size={14} strokeWidth={2.4} aria-hidden="true" />
-                CURRENT ELO
-              </div>
-              <div className="hero-elo-value">{profile.elo_rating}</div>
-              {rank && (
-                <div className="hero-rank">
-                  <Trophy size={15} strokeWidth={2.4} aria-hidden="true" />
-                  Rank #{rank.position} of {rank.total}
+              <div className="hero-elo-stack">
+                <div className="hero-elo-label">
+                  <Gauge size={14} strokeWidth={2.4} aria-hidden="true" />
+                  CURRENT ELO
                 </div>
-              )}
-              {activeGameRoomId && (
-                <button
-                  className="hero-rejoin-btn"
-                  onClick={() => router.push(`/game/${activeGameRoomId}`)}
-                >
-                  <Swords size={16} strokeWidth={2.4} aria-hidden="true" />
-                  Rejoin Match
-                </button>
-              )}
+                <div className="hero-elo-value">{profile.elo_rating}</div>
+                {rank && (
+                  <div className="hero-rank">
+                    <Trophy size={15} strokeWidth={2.4} aria-hidden="true" />
+                    Rank #{rank.position} of {rank.total}
+                  </div>
+                )}
+                {activeGameRoomId && (
+                  <button
+                    className="hero-rejoin-btn"
+                    onClick={() => router.push(`/game/${activeGameRoomId}`)}
+                  >
+                    <Swords size={16} strokeWidth={2.4} aria-hidden="true" />
+                    Rejoin Match
+                  </button>
+                )}
+              </div>
+
+              <div className="hero-arena-panel">
+                <ArenaStatusCard onlineCounts={onlineCounts} compact />
+              </div>
             </div>
           </section>
 
@@ -1043,6 +1050,16 @@ export default function HomePage() {
           flex-shrink: 0;
           text-align: right;
           min-width: 180px;
+        }
+
+        .hero-elo-stack {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+        }
+
+        .hero-arena-panel {
+          display: none;
         }
 
         .hero-elo-label {
@@ -1435,8 +1452,21 @@ export default function HomePage() {
             min-width: 0;
             text-align: left;
             display: grid;
-            gap: 4px;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: stretch;
+            gap: 10px;
             align-content: start;
+          }
+
+          .hero-elo-stack {
+            min-width: 0;
+            min-height: 88px;
+            align-items: flex-start;
+          }
+
+          .hero-elo-label,
+          .hero-rank {
+            justify-content: flex-start;
           }
 
           .hero-elo-value {
@@ -1444,8 +1474,15 @@ export default function HomePage() {
             line-height: 0.95;
           }
 
+          .hero-arena-panel {
+            justify-self: end;
+            display: block;
+            width: clamp(118px, 42vw, 150px);
+          }
+
           .hero-rank {
-            margin-top: 0;
+            margin-top: auto;
+            padding-top: 4px;
             font-size: 0.96rem;
           }
 

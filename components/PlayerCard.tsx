@@ -32,7 +32,7 @@ export default function PlayerCard({
 
   return (
     <div
-      className="card"
+      className="card player-card"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -45,6 +45,7 @@ export default function PlayerCard({
     >
       {/* Avatar */}
       <div
+        className="player-card-avatar"
         style={{
           width: 48,
           height: 48,
@@ -80,8 +81,9 @@ export default function PlayerCard({
       </div>
 
       {/* Info */}
-      <div style={{ minWidth: 0 }}>
+      <div className="player-card-info" style={{ minWidth: 0 }}>
         <div
+          className="player-card-name"
           style={{
             fontFamily: 'var(--font-heading)',
             fontWeight: 600,
@@ -92,9 +94,10 @@ export default function PlayerCard({
             gap: '6px',
           }}
         >
-          {username}
+          <span className="player-card-username">{username}</span>
           {you && (
             <span
+              className="player-card-you"
               style={{
                 fontSize: '0.65rem',
                 padding: '2px 6px',
@@ -110,6 +113,7 @@ export default function PlayerCard({
           )}
         </div>
         <div
+          className="player-card-meta"
           style={{
             fontSize: '0.85rem',
             color: 'var(--accent-gold)',
