@@ -166,17 +166,19 @@ export default function HomePage() {
     return { currentTier, nextTier, isMaxTier, progress, eloToNext };
   }, [profile?.elo_rating]);
 
-  async function refreshCounts(userId: string) {
+  async function refreshCounts(userId: string, shouldApply: () => boolean = () => true) {
     const requestCountRes = await supabaseClient
       .from("friend_requests")
       .select("id", { count: "exact", head: true })
       .eq("receiver_id", userId)
       .eq("status", "pending");
 
-    setPendingFriendRequestCount(requestCountRes.count ?? 0);
+    if (shouldApply()) {
+      setPendingFriendRequestCount(requestCountRes.count ?? 0);
+    }
   }
 
-  async function refreshOutgoingInvites(userId: string) {
+  async function refreshOutgoingInvites(userId: string, shouldApply: () => boolean = () => true) {
     const { data } = await supabaseClient
       .from("game_invites")
       .select("id, receiver_id")
@@ -186,7 +188,9 @@ export default function HomePage() {
     for (const row of data ?? []) {
       map.set(row.receiver_id, row.id);
     }
-    setOutgoingInviteMap(map);
+    if (shouldApply()) {
+      setOutgoingInviteMap(map);
+    }
   }
 
 
@@ -323,10 +327,10 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
+    let activeUserId: string | null = null;
     let requestChannel: ReturnType<typeof supabaseClient.channel> | null = null;
     let inviteChannel: ReturnType<typeof supabaseClient.channel> | null = null;
-    let roomsChannel: ReturnType<typeof supabaseClient.channel> | null = null;
-    let matchmakingChannel: ReturnType<typeof supabaseClient.channel> | null = null;
+    let roomChannels: ReturnType<typeof supabaseClient.channel>[] = [];
 
     (async () => {
       try {
@@ -343,8 +347,9 @@ export default function HomePage() {
         }
 
         const uid = session.user.id;
+        activeUserId = uid;
         setViewerId(uid);
-        await setStatus("online", uid);
+        void setStatus("online", uid);
         const fallbackUsername =
           session.user.user_metadata?.username ||
           session.user.email?.split("@")[0] ||
@@ -381,9 +386,24 @@ export default function HomePage() {
         }
 
         if (!nextProfile) throw new Error("Profile not found");
-        if (!cancelled) setProfile(nextProfile);
+        if (!cancelled) {
+          setProfile(nextProfile);
+          setLoading(false);
+        }
 
-        const [rankPositionRes, rankTotalRes, activeRoomRes] = await Promise.all([
+        const refreshActiveRoom = async () => {
+          const { data: roomData } = await supabaseClient
+            .from("game_rooms")
+            .select("id")
+            .or(`player1_id.eq.${uid},player2_id.eq.${uid}`)
+            .eq("status", "ongoing")
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          if (!cancelled) setActiveGameRoomId(roomData?.[0]?.id ?? null);
+        };
+
+        void Promise.all([
           supabaseClient
             .from("profiles")
             .select("id", { count: "exact", head: true })
@@ -396,20 +416,32 @@ export default function HomePage() {
             .eq("status", "ongoing")
             .order("created_at", { ascending: false })
             .limit(1),
-        ]);
+        ])
+          .then(([rankPositionRes, rankTotalRes, activeRoomRes]) => {
+            if (cancelled) return;
 
-        if (!cancelled && rankPositionRes.count !== null && rankTotalRes.count !== null) {
-          setRank({ position: rankPositionRes.count, total: rankTotalRes.count });
-        }
+            if (rankPositionRes.count !== null && rankTotalRes.count !== null) {
+              setRank({ position: rankPositionRes.count, total: rankTotalRes.count });
+            }
 
-        if (!cancelled) {
-          const nextRoom = activeRoomRes.data?.[0]?.id ?? null;
-          setActiveGameRoomId(nextRoom);
-        }
+            const nextRoom = activeRoomRes.data?.[0]?.id ?? null;
+            setActiveGameRoomId(nextRoom);
+          })
+          .catch((rankErr) => {
+            console.warn("Dashboard rank or room summary failed to load:", rankErr);
+          });
 
-        await Promise.all([refreshCounts(uid), refreshOutgoingInvites(uid)]);
+        const shouldApplyDashboardLoad = () => !cancelled;
 
-        try {
+        void Promise.all([
+          refreshCounts(uid, shouldApplyDashboardLoad),
+          refreshOutgoingInvites(uid, shouldApplyDashboardLoad),
+        ]).catch((countErr) => {
+          console.warn("Dashboard counts failed to load:", countErr);
+        });
+
+        void (async () => {
+          try {
           const { data: recentRows, error: recentError } = await supabaseClient
             .from("match_history")
             .select(
@@ -471,6 +503,7 @@ export default function HomePage() {
           console.warn("Recent activity failed to load:", recentErr);
           if (!cancelled) setRecentMatches([]);
         }
+        })();
 
         if (!cancelled) {
           requestChannel = supabaseClient
@@ -479,7 +512,7 @@ export default function HomePage() {
               "postgres_changes",
               { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${uid}` },
               () => {
-                void refreshCounts(uid);
+                void refreshCounts(uid, shouldApplyDashboardLoad);
               }
             )
             .subscribe();
@@ -490,30 +523,33 @@ export default function HomePage() {
               "postgres_changes",
               { event: "*", schema: "public", table: "game_invites", filter: `sender_id=eq.${uid}` },
               () => {
-                void refreshOutgoingInvites(uid);
+                void refreshOutgoingInvites(uid, shouldApplyDashboardLoad);
               }
             )
             .subscribe();
 
-          roomsChannel = supabaseClient
-            .channel(`dashboard-rooms-${uid}`)
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "game_rooms" },
-              async () => {
-                const { data: roomData } = await supabaseClient
-                  .from("game_rooms")
-                  .select("id")
-                  .or(`player1_id.eq.${uid},player2_id.eq.${uid}`)
-                  .eq("status", "ongoing")
-                  .order("created_at", { ascending: false })
-                  .limit(1);
-                if (!cancelled) setActiveGameRoomId(roomData?.[0]?.id ?? null);
-              }
-            )
-            .subscribe();
+          const handleRoomChange = () => {
+            void refreshActiveRoom();
+          };
 
-          matchmakingChannel = null;
+          roomChannels = [
+            supabaseClient
+              .channel(`dashboard-rooms-player1-${uid}`)
+              .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "game_rooms", filter: `player1_id=eq.${uid}` },
+                handleRoomChange
+              )
+              .subscribe(),
+            supabaseClient
+              .channel(`dashboard-rooms-player2-${uid}`)
+              .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "game_rooms", filter: `player2_id=eq.${uid}` },
+                handleRoomChange
+              )
+              .subscribe(),
+          ];
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to load home";
@@ -523,7 +559,7 @@ export default function HomePage() {
           msg.toLowerCase().includes("refresh token") ||
           msg.toLowerCase().includes("not authenticated")
         ) {
-          if (viewerId) await setStatus("offline");
+          if (activeUserId) await setStatus("offline", activeUserId);
           await supabaseClient.auth.signOut();
           router.push("/");
           return;
@@ -539,8 +575,9 @@ export default function HomePage() {
       cancelled = true;
       if (requestChannel) supabaseClient.removeChannel(requestChannel);
       if (inviteChannel) supabaseClient.removeChannel(inviteChannel);
-      if (roomsChannel) supabaseClient.removeChannel(roomsChannel);
-      if (matchmakingChannel) supabaseClient.removeChannel(matchmakingChannel);
+      for (const channel of roomChannels) {
+        supabaseClient.removeChannel(channel);
+      }
     };
   }, [router, setStatus]);
 

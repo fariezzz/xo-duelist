@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   BarChart3,
@@ -32,7 +32,8 @@ import { getPresenceStatuses, subscribePresenceState } from "../../../hooks/useP
 
 type OpponentMap = Record<string, string>;
 type MatchTab = "all" | "pvp" | "ai";
-type PresenceViewState = { ready: boolean; statuses: Map<string, UserStatus> };
+type PresenceViewState = { ready: boolean; liveStatus?: UserStatus };
+type PublicProfile = NonNullable<Awaited<ReturnType<typeof getPublicProfileByUsername>>>;
 
 function initials(name: string): string {
   const p = name.split(/[\s_]+/).filter(Boolean);
@@ -101,8 +102,9 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Awaited<ReturnType<typeof getPublicProfileByUsername>>>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [matches, setMatches] = useState<PublicMatchRow[]>([]);
+  const [matchesLoading, setMatchesLoading] = useState(false);
   const [opponents, setOpponents] = useState<OpponentMap>({});
   const [activeTab, setActiveTab] = useState<MatchTab>("all");
   const [copied, setCopied] = useState(false);
@@ -117,76 +119,210 @@ export default function PublicProfilePage() {
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [pendingInviteId, setPendingInviteId] = useState<string | null>(null);
-  const [presence, setPresence] = useState<PresenceViewState>({ ready: false, statuses: new Map() });
+  const [presence, setPresence] = useState<PresenceViewState>({ ready: false });
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
-
-  const load = useCallback(async () => {
-    if (!username) { setError("Invalid profile."); setLoading(false); return; }
-    try {
-      setError(null);
-      const { data: sessionData } = await supabaseClient.auth.getSession();
-      const uid = sessionData.session?.user.id ?? null;
-      setViewerId(uid);
-      const p = await getPublicProfileByUsername(username);
-      if (!p) { setProfile(null); setMatches([]); setOpponents({}); setLoading(false); return; }
-      setProfile(p);
-
-      // Fetch rank
-      const { count: aboveCount } = await supabaseClient
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .gt("elo_rating", p.elo_rating);
-      const { count: totalCount } = await supabaseClient
-        .from("profiles")
-        .select("id", { count: "exact", head: true });
-      setRank((aboveCount ?? 0) + 1);
-      setTotalPlayers(totalCount ?? 0);
-
-      if (uid && uid !== p.id) {
-        const [friendCheck, reqCheck, inviteCheck] = await Promise.all([
-          supabaseClient.from("friends").select("friend_id").eq("user_id", uid).eq("friend_id", p.id).maybeSingle(),
-          supabaseClient.from("friend_requests").select("id, sender_id, receiver_id").or(`and(sender_id.eq.${uid},receiver_id.eq.${p.id}),and(sender_id.eq.${p.id},receiver_id.eq.${uid})`).eq("status", "pending").maybeSingle(),
-          supabaseClient.from("game_invites").select("id").eq("sender_id", uid).eq("receiver_id", p.id).eq("status", "pending").maybeSingle()
-        ]);
-        setIsFriend(!!friendCheck.data);
-        setHasPendingRequest(!!reqCheck.data);
-        setPendingFriendRequestId(reqCheck.data?.sender_id === uid ? reqCheck.data.id : null);
-        setPendingInviteId(inviteCheck.data?.id ?? null);
-      } else {
-        setIsFriend(false);
-        setHasPendingRequest(false);
-        setPendingFriendRequestId(null);
-        setPendingInviteId(null);
-      }
-
-      const mh = await getPublicProfileMatches(p.id, 10);
-      setMatches(mh);
-      const oppIds = new Set<string>();
-      for (const m of mh) {
-        if (m.player1_id === p.id) oppIds.add(m.player2_id);
-        else oppIds.add(m.player1_id);
-      }
-      if (oppIds.size > 0) {
-        const { data: profs, error: pe } = await supabaseClient.from("profiles").select("id, username").in("id", [...oppIds]);
-        if (pe) throw pe;
-        const map: OpponentMap = {};
-        for (const row of profs ?? []) { if (row.id && row.username) map[row.id] = row.username; }
-        setOpponents(map);
-      } else { setOpponents({}); }
-    } catch (e: unknown) {
-      console.error(e);
-      setError(e instanceof Error ? e.message : "Failed to load profile.");
-    } finally { setLoading(false); }
-  }, [username]);
+  const loadVersionRef = useRef(0);
+  const profileIdRef = useRef<string | null>(null);
+  const presenceStatusesRef = useRef<Map<string, UserStatus>>(new Map());
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => { void load(); }, 0);
+    profileIdRef.current = profile?.id ?? null;
+  }, [profile?.id]);
+
+  useEffect(() => {
+    const liveStatus = profile?.id ? presenceStatusesRef.current.get(profile.id) : undefined;
+    setPresence((prev) =>
+      prev.liveStatus === liveStatus ? prev : { ...prev, liveStatus }
+    );
+  }, [profile?.id]);
+
+  const resetRelationship = useCallback((shouldApply: () => boolean = () => true) => {
+    if (!shouldApply()) return;
+    setIsFriend(false);
+    setHasPendingRequest(false);
+    setPendingFriendRequestId(null);
+    setPendingInviteId(null);
+  }, []);
+
+  const refreshRank = useCallback(async (eloRating: number, shouldApply: () => boolean = () => true) => {
+    const [aboveRes, totalRes] = await Promise.all([
+      supabaseClient
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .gt("elo_rating", eloRating),
+      supabaseClient
+        .from("profiles")
+        .select("id", { count: "exact", head: true }),
+    ]);
+
+    if (!shouldApply()) return;
+    setRank((aboveRes.count ?? 0) + 1);
+    setTotalPlayers(totalRes.count ?? 0);
+  }, []);
+
+  const refreshRelationship = useCallback(
+    async (uid: string | null, publicProfileId: string, shouldApply: () => boolean = () => true) => {
+      if (!uid || uid === publicProfileId) {
+        resetRelationship(shouldApply);
+        return;
+      }
+
+      const [friendCheck, reqCheck, inviteCheck] = await Promise.all([
+        supabaseClient
+          .from("friends")
+          .select("friend_id")
+          .eq("user_id", uid)
+          .eq("friend_id", publicProfileId)
+          .maybeSingle(),
+        supabaseClient
+          .from("friend_requests")
+          .select("id, sender_id, receiver_id")
+          .or(`and(sender_id.eq.${uid},receiver_id.eq.${publicProfileId}),and(sender_id.eq.${publicProfileId},receiver_id.eq.${uid})`)
+          .eq("status", "pending")
+          .maybeSingle(),
+        supabaseClient
+          .from("game_invites")
+          .select("id")
+          .eq("sender_id", uid)
+          .eq("receiver_id", publicProfileId)
+          .eq("status", "pending")
+          .maybeSingle(),
+      ]);
+
+      if (!shouldApply()) return;
+      setIsFriend(!!friendCheck.data);
+      setHasPendingRequest(!!reqCheck.data);
+      setPendingFriendRequestId(reqCheck.data?.sender_id === uid ? reqCheck.data.id : null);
+      setPendingInviteId(inviteCheck.data?.id ?? null);
+    },
+    [resetRelationship]
+  );
+
+  const refreshMatches = useCallback(async (publicProfileId: string, shouldApply: () => boolean = () => true) => {
+    if (shouldApply()) setMatchesLoading(true);
+
+    try {
+      const mh = await getPublicProfileMatches(publicProfileId, 10);
+      if (!shouldApply()) return;
+      setMatches(mh);
+
+      const oppIds = new Set<string>();
+      for (const m of mh) {
+        if (m.player1_id === publicProfileId) oppIds.add(m.player2_id);
+        else oppIds.add(m.player1_id);
+      }
+
+      if (oppIds.size === 0) {
+        setOpponents({});
+        return;
+      }
+
+      const { data: profs, error: pe } = await supabaseClient
+        .from("profiles")
+        .select("id, username")
+        .in("id", [...oppIds]);
+      if (pe) throw pe;
+      if (!shouldApply()) return;
+
+      const map: OpponentMap = {};
+      for (const row of profs ?? []) {
+        if (row.id && row.username) map[row.id] = row.username;
+      }
+      setOpponents(map);
+    } finally {
+      if (shouldApply()) setMatchesLoading(false);
+    }
+  }, []);
+
+  const load = useCallback(
+    async (options: { showLoader?: boolean } = {}) => {
+      const version = ++loadVersionRef.current;
+      const shouldApply = () => version === loadVersionRef.current;
+
+      if (!username) {
+        setError("Invalid profile.");
+        setLoading(false);
+        return;
+      }
+
+      if (options.showLoader) setLoading(true);
+
+      try {
+        setError(null);
+        const [{ data: sessionData }, p] = await Promise.all([
+          supabaseClient.auth.getSession(),
+          getPublicProfileByUsername(username),
+        ]);
+        if (!shouldApply()) return;
+
+        const uid = sessionData.session?.user.id ?? null;
+        setViewerId(uid);
+
+        if (!p) {
+          profileIdRef.current = null;
+          setProfile(null);
+          setMatches([]);
+          setOpponents({});
+          setRank(null);
+          setTotalPlayers(0);
+          resetRelationship();
+          setLoading(false);
+          return;
+        }
+
+        const profileChanged = profileIdRef.current !== p.id;
+        if (profileChanged) {
+          setRank(null);
+          setTotalPlayers(0);
+          setMatches([]);
+          setOpponents({});
+          setActiveTab("all");
+          resetRelationship();
+        }
+
+        profileIdRef.current = p.id;
+        setProfile(p);
+        setLoading(false);
+
+        void refreshRank(p.elo_rating, shouldApply).catch((rankErr) => {
+          console.warn("Public profile rank failed to load:", rankErr);
+        });
+
+        void refreshRelationship(uid, p.id, shouldApply).catch((relationshipErr) => {
+          console.warn("Public profile relationship failed to load:", relationshipErr);
+        });
+
+        void refreshMatches(p.id, shouldApply).catch((matchesErr) => {
+          console.warn("Public profile matches failed to load:", matchesErr);
+          if (shouldApply()) setMatchesLoading(false);
+        });
+      } catch (e: unknown) {
+        console.error(e);
+        if (shouldApply()) {
+          setError(e instanceof Error ? e.message : "Failed to load profile.");
+          setLoading(false);
+        }
+      }
+    },
+    [refreshMatches, refreshRank, refreshRelationship, resetRelationship, username]
+  );
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => { void load({ showLoader: true }); }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [load]);
 
   useEffect(() => {
     const unsubscribe = subscribePresenceState((state, hasSynced) => {
-      setPresence({ ready: hasSynced, statuses: getPresenceStatuses(state) });
+      const statuses = getPresenceStatuses(state);
+      presenceStatusesRef.current = statuses;
+      const targetProfileId = profileIdRef.current;
+      const liveStatus = targetProfileId ? statuses.get(targetProfileId) : undefined;
+      setPresence((prev) =>
+        prev.ready === hasSynced && prev.liveStatus === liveStatus
+          ? prev
+          : { ready: hasSynced, liveStatus }
+      );
     });
 
     return () => {
@@ -206,21 +342,66 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     if (!profile?.id) return;
+    let cancelled = false;
+    const shouldApply = () => !cancelled && profileIdRef.current === profile.id;
+    const handleRelationshipChange = () => {
+      void refreshRelationship(viewerId, profile.id, shouldApply).catch((relationshipErr) => {
+        console.warn("Public profile relationship update failed:", relationshipErr);
+      });
+    };
+
     const channel = supabaseClient
       .channel(`public_profile_${profile.id}_${viewerId ?? "anon"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${profile.id}` }, () => { void load(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_invites" }, () => { void load(); });
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${profile.id}` },
+        (payload: { new: Partial<PublicProfile> }) => {
+          const row = payload.new;
+          setProfile((prev) => {
+            if (!prev || row.id !== prev.id) return prev;
+            return {
+              ...prev,
+              username: row.username ?? prev.username,
+              elo_rating: row.elo_rating ?? prev.elo_rating,
+              avatar_url: row.avatar_url !== undefined ? row.avatar_url : prev.avatar_url,
+              status: row.status !== undefined ? row.status : prev.status,
+              last_seen: row.last_seen !== undefined ? row.last_seen : prev.last_seen,
+              wins: row.wins ?? prev.wins,
+              losses: row.losses ?? prev.losses,
+              draws: row.draws ?? prev.draws,
+              bio: row.bio !== undefined ? row.bio : prev.bio,
+              created_at: row.created_at !== undefined ? row.created_at : prev.created_at,
+            };
+          });
+
+          if (typeof row.elo_rating === "number") {
+            void refreshRank(row.elo_rating, shouldApply).catch((rankErr) => {
+              console.warn("Public profile rank update failed:", rankErr);
+            });
+          }
+
+          if (row.wins !== undefined || row.losses !== undefined || row.draws !== undefined) {
+            void refreshMatches(profile.id, shouldApply).catch((matchesErr) => {
+              console.warn("Public profile matches update failed:", matchesErr);
+            });
+          }
+        }
+      );
 
     if (viewerId) {
       channel
-        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `sender_id=eq.${viewerId}` }, () => { void load(); })
-        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${viewerId}` }, () => { void load(); })
-        .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${viewerId}` }, () => { void load(); });
+        .on("postgres_changes", { event: "*", schema: "public", table: "game_invites", filter: `sender_id=eq.${viewerId}` }, handleRelationshipChange)
+        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `sender_id=eq.${viewerId}` }, handleRelationshipChange)
+        .on("postgres_changes", { event: "*", schema: "public", table: "friend_requests", filter: `receiver_id=eq.${viewerId}` }, handleRelationshipChange)
+        .on("postgres_changes", { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${viewerId}` }, handleRelationshipChange);
     }
 
     channel.subscribe();
-    return () => { void supabaseClient.removeChannel(channel); };
-  }, [profile?.id, viewerId, load]);
+    return () => {
+      cancelled = true;
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [profile?.id, refreshMatches, refreshRank, refreshRelationship, viewerId]);
 
   function handleCopyLink() {
     navigator.clipboard.writeText(window.location.href).then(() => {
@@ -241,13 +422,13 @@ export default function PublicProfilePage() {
           setPendingFriendRequestId(null);
         } else if (err.message.includes("request_already_exists") || err.message.includes("request_already_pending")) {
           setHasPendingRequest(true);
-          await load();
+          await refreshRelationship(viewerId, profile.id);
         } else {
           throw err;
         }
       } else {
         setHasPendingRequest(true);
-        await load();
+        await refreshRelationship(viewerId, profile.id);
       }
     } catch (e: unknown) {
       console.error("Failed to add friend:", e);
@@ -267,7 +448,7 @@ export default function PublicProfilePage() {
       if (err) throw err;
       setHasPendingRequest(false);
       setPendingFriendRequestId(null);
-      await load();
+      if (profile) await refreshRelationship(viewerId, profile.id);
     } catch (e: unknown) {
       console.error("Failed to cancel friend request:", e);
       alert("Could not cancel friend request.");
@@ -304,7 +485,7 @@ export default function PublicProfilePage() {
         else throw err;
       } else {
         setShowChallengeModal(true);
-        await load();
+        await refreshRelationship(viewerId, profile.id);
       }
     } catch (e: unknown) {
       console.error("Failed to send challenge:", e);
@@ -582,7 +763,7 @@ export default function PublicProfilePage() {
 
   const parsedStatus = resolveUserStatusForPresence(profile.status, profile.last_seen, {
     presenceReady: presence.ready,
-    liveStatus: presence.statuses.get(profile.id),
+    liveStatus: presence.liveStatus,
     now: presenceNow,
   });
 
@@ -804,7 +985,9 @@ export default function PublicProfilePage() {
               ))}
             </div>
 
-            {filteredMatches.length === 0 ? (
+            {matchesLoading ? (
+              <p className="pp-muted">Loading matches...</p>
+            ) : filteredMatches.length === 0 ? (
               <p className="pp-muted">No matches found.</p>
             ) : (
               <ul className="pp-matches">

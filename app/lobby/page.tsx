@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
@@ -37,6 +37,17 @@ function timeAgo(dateStr: string) {
   return `${hrs}h ago`;
 }
 
+function getErrorMessage(err: unknown, fallback: string) {
+  if (err instanceof Error && err.message) return err.message;
+
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+
+  return fallback;
+}
+
 export default function LobbyPage() {
   const router = useRouter();
   const [roomCode, setRoomCode] = useState('');
@@ -46,6 +57,7 @@ export default function LobbyPage() {
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [publicRoomsLoading, setPublicRoomsLoading] = useState(true);
   const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
+  const refreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -54,34 +66,51 @@ export default function LobbyPage() {
     })();
   }, [router]);
 
-  const fetchPublicRooms = useCallback(async () => {
+  const fetchPublicRooms = useCallback(async (shouldApply: () => boolean = () => true, options: { showLoading?: boolean } = {}) => {
+    if (options.showLoading && shouldApply()) setPublicRoomsLoading(true);
     try {
       const { data, error } = await supabaseClient.rpc('list_public_rooms');
       if (error) throw error;
-      setPublicRooms(Array.isArray(data) ? data : []);
+      if (shouldApply()) setPublicRooms(Array.isArray(data) ? data : []);
     } catch {
       // silently fail — list is optional
     } finally {
-      setPublicRoomsLoading(false);
+      if (shouldApply()) setPublicRoomsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchPublicRooms();
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    const scheduleFetchPublicRooms = (delay = 250) => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null;
+        void fetchPublicRooms(shouldApply);
+      }, delay);
+    };
+
+    scheduleFetchPublicRooms(0);
 
     // Subscribe to realtime updates for public rooms
     const channel = supabaseClient
       .channel('public-rooms-list')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'game_rooms' },
-        () => {
-          fetchPublicRooms();
-        }
+        { event: '*', schema: 'public', table: 'game_rooms', filter: 'is_public=eq.true' },
+        () => scheduleFetchPublicRooms()
       )
       .subscribe();
 
     return () => {
+      cancelled = true;
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       supabaseClient.removeChannel(channel);
     };
   }, [fetchPublicRooms]);
@@ -96,8 +125,8 @@ export default function LobbyPage() {
       const room = Array.isArray(data) ? data[0] : data;
       if (!room?.id) throw new Error('Failed to create lobby room');
       router.push(`/lobby/${room.id}`);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to create room');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to create room'));
     } finally {
       setLoading(false);
     }
@@ -114,8 +143,8 @@ export default function LobbyPage() {
       const room = Array.isArray(data) ? data[0] : data;
       if (!room?.id) throw new Error('Failed to join room');
       router.push(`/lobby/${room.id}`);
-    } catch (err: any) {
-      const msg = String(err?.message || 'Failed to join room');
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, 'Failed to join room');
       setError(msg.toLowerCase().includes('room_not_found_or_full') ? 'Room not found or full' : msg);
     } finally {
       setLoading(false);
@@ -131,8 +160,8 @@ export default function LobbyPage() {
       const room = Array.isArray(data) ? data[0] : data;
       if (!room?.id) throw new Error('Failed to join room');
       router.push(`/lobby/${room.id}`);
-    } catch (err: any) {
-      const msg = String(err?.message || 'Failed to join room');
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, 'Failed to join room');
       setError(msg.toLowerCase().includes('room_not_found_or_full') ? 'Room not found or already full' : msg);
     } finally {
       setJoiningRoomId(null);
@@ -273,7 +302,7 @@ export default function LobbyPage() {
               </h2>
               <button
                 className="btn btn-ghost"
-                onClick={fetchPublicRooms}
+                onClick={() => void fetchPublicRooms(undefined, { showLoading: true })}
                 style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <RefreshCw size={14} strokeWidth={2.35} aria-hidden="true" />

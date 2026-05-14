@@ -48,6 +48,7 @@ export default function GameRoom() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const aiOrigin = searchParams.get('origin'); // 'dashboard' or 'matchmaking'
+  const aiPersona = searchParams.get('persona');
   const introRequested = searchParams.get('intro') === '1';
   const { showToast, showBanner, banner } = useNotification();
   const lock = useScopedSessionLock('arena');
@@ -219,7 +220,7 @@ export default function GameRoom() {
       if (!s.data.session) return router.replace('/');
       const uid = s.data.session.user.id;
       setMeId(uid);
-      await setStatus('in_game', uid);
+      void setStatus('in_game', uid);
       const { data } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).single();
       if (!data) return router.replace('/dashboard');
       // If game is already finished (e.g. user hit back button), redirect away
@@ -233,17 +234,31 @@ export default function GameRoom() {
       setMySymbol(data.player1_id === uid ? 'X' : 'O');
       lastShuffleAtRef.current = data.next_shuffle_at ?? 12;
 
-      // Fetch player profiles for display
-      const { data: p1Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player1_id).single();
       if (data.is_vs_ai) {
+        const { data: p1Profile } = await supabaseClient
+          .from('profiles')
+          .select('username, elo_rating, avatar_url')
+          .eq('id', data.player1_id)
+          .single();
         // AI opponent: display with provided persona name or fallback, and player's ELO
-        const persona = searchParams.get('persona') || getRandomPersona();
+        const persona = aiPersona || getRandomPersona();
         setPlayerProfiles({
           p1: { username: p1Profile?.username ?? 'Player 1', elo: p1Profile?.elo_rating ?? 1000, avatarUrl: p1Profile?.avatar_url ?? null },
           p2: { username: persona, elo: p1Profile?.elo_rating ?? 1000, avatarUrl: null },
         });
       } else {
-        const { data: p2Profile } = await supabaseClient.from('profiles').select('username, elo_rating, avatar_url').eq('id', data.player2_id).single();
+        const [{ data: p1Profile }, { data: p2Profile }] = await Promise.all([
+          supabaseClient
+            .from('profiles')
+            .select('username, elo_rating, avatar_url')
+            .eq('id', data.player1_id)
+            .single(),
+          supabaseClient
+            .from('profiles')
+            .select('username, elo_rating, avatar_url')
+            .eq('id', data.player2_id)
+            .single(),
+        ]);
         setPlayerProfiles({
           p1: { username: p1Profile?.username ?? 'Player 1', elo: p1Profile?.elo_rating ?? 1000, avatarUrl: p1Profile?.avatar_url ?? null },
           p2: { username: p2Profile?.username ?? 'Player 2', elo: p2Profile?.elo_rating ?? 1000, avatarUrl: p2Profile?.avatar_url ?? null },
@@ -255,7 +270,7 @@ export default function GameRoom() {
       const aiLabel = data.is_vs_ai ? ' (VS AI)' : '';
       showBannerRef.current({ type: 'info', message: `Game Started! You play as ${sym}${aiLabel}`, icon: <Gamepad2 size={22} />, duration: 2500 });
     })();
-  }, [roomId, router, setStatus]);
+  }, [roomId, router, setStatus, aiPersona]);
 
   /* ── Realtime channel ──────────────────────────── */
   useEffect(() => {
@@ -607,7 +622,7 @@ export default function GameRoom() {
 
     setResultData({ outcome, eloChange, newElo, opponentName });
     setShowResult(true);
-    await setStatus('online');
+    void setStatus('online');
   }, [meId, setStatus]);
 
   /* ── Helper: am I player1? ────────────────────── */
@@ -1382,7 +1397,7 @@ export default function GameRoom() {
               // AI from matchmaking fallback: no Play Again, just home
               (room?.is_vs_ai && aiOrigin === 'matchmaking') ? undefined
                 : async () => {
-                  await setStatus('online');
+                  void setStatus('online');
                   if (room?.is_vs_ai && aiOrigin === 'dashboard') {
                     try {
                       const { data, error } = await supabaseClient.rpc('create_ai_match', {
@@ -1414,7 +1429,7 @@ export default function GameRoom() {
             )
         }
         onHome={async () => {
-          await setStatus('online');
+          void setStatus('online');
           if (isLobbyGame) {
             try {
               const emptyBoard = Array(25).fill(null);

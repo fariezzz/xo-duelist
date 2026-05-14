@@ -27,7 +27,14 @@ import VoiceChat from '../../../components/VoiceChat';
 
 
 function toLobbyErrorMessage(err: unknown, fallback: string): string {
-  const raw = String((err as any)?.message || fallback);
+  let raw = fallback;
+  if (err instanceof Error && err.message) {
+    raw = err.message;
+  } else if (typeof err === 'object' && err !== null && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message) raw = message;
+  }
+
   const msg = raw.toLowerCase();
 
   if (msg.includes('room_finished')) return 'Previous match is already finished. Click Back to Lobby from the result screen to reset the room.';
@@ -45,6 +52,22 @@ type LobbyProfile = {
   id: string;
   username: string;
   avatar_url: string | null;
+};
+
+type LobbyRoom = {
+  id: string;
+  room_code: string | null;
+  is_public: boolean | null;
+  player1_id: string | null;
+  player2_id: string | null;
+  player1_ready: boolean | null;
+  player2_ready: boolean | null;
+  status: string;
+};
+
+type LobbyRoomChangePayload = {
+  new?: LobbyRoom;
+  record?: LobbyRoom;
 };
 
 function getInitials(name: string) {
@@ -208,7 +231,7 @@ export default function LobbyRoomPage() {
   const params = useParams();
   const router = useRouter();
   const roomId = params?.roomId as string;
-  const [room, setRoom] = useState<any>(null);
+  const [room, setRoom] = useState<LobbyRoom | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roomCancelled, setRoomCancelled] = useState(false);
@@ -235,29 +258,45 @@ export default function LobbyRoomPage() {
 
   // Refs for latest values
   const roomRef = useRef(room);
+  const profileIdsKeyRef = useRef('');
   useEffect(() => { roomRef.current = room; }, [room]);
 
 
 
-  const loadLobbyProfiles = useCallback(async (roomData: any) => {
-    const ids = [roomData.player1_id, roomData.player2_id].filter(Boolean);
+  const loadLobbyProfiles = useCallback(async (roomData: LobbyRoom, shouldApply: () => boolean = () => true) => {
+    const ids = [roomData.player1_id, roomData.player2_id].filter((id): id is string => Boolean(id));
+    const idsKey = ids.join(':');
+
+    if (profileIdsKeyRef.current === idsKey) return;
 
     if (ids.length === 0) {
-      setPlayerProfiles({ host: null, guest: null });
+      if (shouldApply()) {
+        profileIdsKeyRef.current = idsKey;
+        setPlayerProfiles({ host: null, guest: null });
+      }
       return;
     }
 
-    const { data } = await supabaseClient
+    profileIdsKeyRef.current = idsKey;
+
+    const { data, error } = await supabaseClient
       .from("profiles")
       .select("id, username, avatar_url")
       .in("id", ids);
 
+    if (error) {
+      if (shouldApply()) profileIdsKeyRef.current = '';
+      return;
+    }
+
     const rows = (data ?? []) as LobbyProfile[];
 
-    setPlayerProfiles({
-      host: rows.find((p) => p.id === roomData.player1_id) ?? null,
-      guest: rows.find((p) => p.id === roomData.player2_id) ?? null,
-    });
+    if (shouldApply()) {
+      setPlayerProfiles({
+        host: rows.find((p) => p.id === roomData.player1_id) ?? null,
+        guest: rows.find((p) => p.id === roomData.player2_id) ?? null,
+      });
+    }
   }, []);
 
   // ── Presence event handler (runs on OTHER player's client) ────
@@ -324,37 +363,50 @@ export default function LobbyRoomPage() {
   // ── Main data fetch + postgres realtime subscription ──────────
   useEffect(() => {
     let cancelled = false;
+    const shouldApply = () => !cancelled;
+    profileIdsKeyRef.current = '';
+
     (async () => {
       try {
         setLoading(true);
+        setRoom(null);
+        setError(null);
+        setRoomCancelled(false);
+        setLeftRoom(false);
+        setPlayerProfiles({ host: null, guest: null });
+
         const { data: sessionData } = await supabaseClient.auth.getSession();
         if (!sessionData.session) { router.push('/'); return; }
         const myId = sessionData.session.user.id;
         setMeId(myId);
 
-        // Fetch username for presence tracking
-        const { data: profile } = await supabaseClient
+        const usernamePromise = supabaseClient
           .from('profiles')
           .select('username')
           .eq('id', myId)
           .maybeSingle();
-        if (profile?.username) setMeUsername(profile.username);
+        void usernamePromise.then(({ data: profile }) => {
+          if (!cancelled && profile?.username) setMeUsername(profile.username);
+        }, () => {
+          // Username is only needed for presence metadata; the lobby can render without it.
+        });
 
         const { data, error } = await supabaseClient.from('game_rooms').select('*').eq('id', roomId).maybeSingle();
         if (error) throw error;
         if (!data) throw new Error('Lobby not found — it may have expired.');
 
         // Check if room is cancelled/finished already
-        if (data.status === 'cancelled') {
+        const roomData = data as LobbyRoom;
+        if (roomData.status === 'cancelled') {
           if (!cancelled) setRoomCancelled(true);
           return;
         }
 
         if (!cancelled) {
-          setRoom(data);
-          void loadLobbyProfiles(data);
+          setRoom(roomData);
+          void loadLobbyProfiles(roomData, shouldApply);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) setError(toLobbyErrorMessage(err, 'Failed to load lobby'));
       } finally {
         if (!cancelled) setLoading(false);
@@ -364,11 +416,13 @@ export default function LobbyRoomPage() {
     // Subscribe to DB changes for this room (ready state, status, etc.)
     const channel = supabaseClient
       .channel(`lobby-db-${roomId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, (payload: any) => {
-        const updated = payload.new || payload.record;
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, (payload) => {
+        if (cancelled) return;
+        const roomPayload = payload as unknown as LobbyRoomChangePayload;
+        const updated = roomPayload.new || roomPayload.record;
         if (!updated) return;
         setRoom(updated);
-        void loadLobbyProfiles(updated);
+        void loadLobbyProfiles(updated, shouldApply);
 
         if (updated.status === 'ongoing' && updated.player2_id) {
           disconnect();
@@ -382,6 +436,7 @@ export default function LobbyRoomPage() {
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_rooms', filter: `id=eq.${roomId}` }, () => {
+        if (cancelled) return;
         disconnect();
         setRoomCancelled(true);
       })
@@ -400,7 +455,7 @@ export default function LobbyRoomPage() {
       const { error } = await supabaseClient.rpc('cancel_lobby_room', { input_room_id: room.id });
       if (error) throw error;
       setRoomCancelled(true);
-    } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to cancel room')); }
+    } catch (err: unknown) { setError(toLobbyErrorMessage(err, 'Failed to cancel room')); }
   }
 
   async function exitRoom() {
@@ -411,7 +466,7 @@ export default function LobbyRoomPage() {
       const { error } = await supabaseClient.rpc('leave_lobby_room', { input_room_id: room.id });
       if (error) throw error;
       setLeftRoom(true);
-    } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to leave room')); }
+    } catch (err: unknown) { setError(toLobbyErrorMessage(err, 'Failed to leave room')); }
   }
 
   async function toggleReady() {
@@ -423,7 +478,7 @@ export default function LobbyRoomPage() {
       const currentReady = amHost ? room.player1_ready : room.player2_ready;
       const { error } = await supabaseClient.rpc('set_lobby_ready', { input_room_id: room.id, input_ready: !currentReady });
       if (error) throw error;
-    } catch (err: any) { setError(toLobbyErrorMessage(err, 'Failed to update ready')); }
+    } catch (err: unknown) { setError(toLobbyErrorMessage(err, 'Failed to update ready')); }
     finally { setReadyLoading(false); }
   }
 
@@ -434,7 +489,7 @@ export default function LobbyRoomPage() {
       const { error } = await supabaseClient.rpc('start_lobby_room', { input_room_id: room.id });
       if (error) throw error;
       // Game started → redirect handled by realtime UPDATE subscription (includes ?intro=1)
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(toLobbyErrorMessage(err, 'Failed to start game'));
     } finally { setStartLoading(false); }
   }
@@ -541,7 +596,7 @@ export default function LobbyRoomPage() {
   const hostReady = !!room.player1_ready;
   const guestReady = !!room.player2_ready;
   const myReady = isHost ? hostReady : guestReady;
-  const canStart = isHost && hostReady && guestReady && room.player2_id;
+  const canStart = isHost && hostReady && guestReady && !!room.player2_id;
 
   const hostName =
     playerProfiles.host?.username ??
@@ -697,11 +752,11 @@ export default function LobbyRoomPage() {
             <div className="lobby-room-actions" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
               {/* Voice Chat */}
-              {opponentId && (
+              {meId && opponentId && (
                 <div className="lobby-room-voice" style={{ marginBottom: '12px' }}>
                   <VoiceChat
                     roomId={roomId}
-                    meId={meId!}
+                    meId={meId}
                     player1Id={room.player1_id}
                     player2Id={room.player2_id}
                     opponentId={opponentId}
