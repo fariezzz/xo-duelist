@@ -88,6 +88,8 @@ export default function GameRoom() {
   const lastStatusRef = useRef<string | null>(null);
   const timerWarningShown = useRef(false);
   const lastShuffleAtRef = useRef<number>(12);
+  const sfxChannelRef = useRef<any>(null);
+  const lastSfxEventIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -272,6 +274,65 @@ export default function GameRoom() {
     })();
   }, [roomId, router, setStatus, aiPersona]);
 
+  /* ── SFX Broadcast channel ────────────────────────── */
+  useEffect(() => {
+    if (!roomId || !meId || room?.is_vs_ai) return;
+
+    const channel = supabaseClient.channel(`game-sfx:${roomId}`)
+      .on('broadcast', { event: 'game-sfx' }, (payload) => {
+        const data = payload.payload;
+        if (data.from === meId || data.roomId !== roomId) return;
+        if (data.id === lastSfxEventIdRef.current) return;
+        lastSfxEventIdRef.current = data.id;
+
+        switch (data.event) {
+          case 'move-placed':
+            if (data.symbol === 'X') soundsRef.current.playPlaceX();
+            else if (data.symbol === 'O') soundsRef.current.playPlaceO();
+            break;
+          case 'skill-used':
+            if (data.skill) playSkillSound(data.skill);
+            break;
+          case 'power-cell':
+            soundsRef.current.playPowerCell();
+            break;
+          case 'curse-triggered':
+            if (data.curse) playCurseSound(data.curse);
+            break;
+          case 'fumble-triggered':
+            soundsRef.current.playFumble();
+            break;
+          case 'board-shuffle':
+            soundsRef.current.playShuffle();
+            break;
+        }
+      })
+      .subscribe();
+
+    sfxChannelRef.current = channel;
+
+    return () => {
+      supabaseClient.removeChannel(channel);
+      sfxChannelRef.current = null;
+    };
+  }, [roomId, meId, room?.is_vs_ai, playSkillSound, playCurseSound]);
+
+  const emitGameSfx = useCallback((event: string, payload: any = {}) => {
+    if (!sfxChannelRef.current || room?.is_vs_ai) return;
+    sfxChannelRef.current.send({
+      type: 'broadcast',
+      event: 'game-sfx',
+      payload: {
+        id: crypto.randomUUID(),
+        roomId,
+        from: meId,
+        event,
+        ts: Date.now(),
+        ...payload
+      }
+    }).catch(() => { /* ignore */ });
+  }, [roomId, meId, room?.is_vs_ai]);
+
   /* ── Realtime channel ──────────────────────────── */
   useEffect(() => {
     if (!roomId || !meId) return;
@@ -294,7 +355,8 @@ export default function GameRoom() {
         if (newRow.next_shuffle_at > lastShuffleAtRef.current) {
           lastShuffleAtRef.current = newRow.next_shuffle_at;
           setIsShuffling(true);
-          soundsRef.current.playShuffle();
+          // --- DISABLED: Shuffle sound handled by SFX Broadcast / Local emit ---
+          // soundsRef.current.playShuffle();
           setTimeout(() => setIsShuffling(false), 1200);
           showToastRef.current({ type: 'info', title: 'Board Shuffled!', message: 'All positions have been randomized!' });
         }
@@ -313,9 +375,9 @@ export default function GameRoom() {
         // Turn change banners & opponent move sound
         if (newRow.status === 'ongoing' && prevTurn !== newRow.current_turn) {
           if (newRow.current_turn === meId) {
-            // Opponent just moved, so play their sound
-            if (newRow.player1_id === meId) soundsRef.current.playPlaceO(); // Opponent is O
-            else soundsRef.current.playPlaceX(); // Opponent is X
+            // --- DISABLED: Sound is now handled by SFX Broadcast ---
+            // if (newRow.player1_id === meId) soundsRef.current.playPlaceO(); // Opponent is O
+            // else soundsRef.current.playPlaceX(); // Opponent is X
 
             showBannerRef.current({ type: 'info', message: "Your Turn!", icon: <Swords size={22} />, pulse: true, duration: 2500 });
           } else {
@@ -348,11 +410,7 @@ export default function GameRoom() {
     const delay = 700 + Math.random() * 900; // 700-1600ms
     const timer = setTimeout(async () => {
       try {
-        const { data: fr } = await supabaseClient
-          .from('game_rooms')
-          .select('*')
-          .eq('id', roomId)
-          .single();
+        const fr = room;
         if (!fr || fr.status !== 'ongoing' || fr.current_turn === meId) return;
 
         const currentBoard: BoardCell[] = typeof fr.board_state === 'string'
@@ -403,6 +461,7 @@ export default function GameRoom() {
 
           update.board_state = newBoard;
           update[aiSkillKey] = null; // consume skill
+          playSkillSound(usedSkill);
 
           // Win check after OVERWRITE
           if (usedSkill === 'OVERWRITE') {
@@ -422,6 +481,10 @@ export default function GameRoom() {
             update.power_cells = JSON.stringify(s.power_cells);
             update.curse_cells = JSON.stringify(s.curse_cells);
             update.next_shuffle_at = effNsa + 12;
+            lastShuffleAtRef.current = update.next_shuffle_at;
+            setIsShuffling(true);
+            soundsRef.current.playShuffle();
+            setTimeout(() => setIsShuffling(false), 1200);
           }
 
           // Tick AI curse
@@ -430,6 +493,7 @@ export default function GameRoom() {
             update[aiCurseKey] = ticked ? JSON.stringify(ticked) : null;
           }
 
+          setBoard(update.board_state || newBoard);
           await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
 
           // Show banner to human
@@ -451,13 +515,20 @@ export default function GameRoom() {
         if (aiCurse?.type === 'FUMBLE' && aiCurse.turns_remaining > 0) {
           if (!isOneStepFromWin(currentBoard, aiSymbol)) {
             const rnd = getRandomEmptyCell(currentBoard);
-            if (rnd !== null && rnd !== targetCell) targetCell = rnd;
+            if (rnd !== null && rnd !== targetCell) {
+              targetCell = rnd;
+              setFumbleWarning(true);
+              soundsRef.current.playFumble();
+              setTimeout(() => setFumbleWarning(false), 1500);
+            }
           }
         }
 
         const newBoard = [...currentBoard] as BoardCell[];
         newBoard[targetCell] = aiSymbol;
         update.board_state = newBoard;
+        if (aiSymbol === 'X') soundsRef.current.playPlaceX();
+        else soundsRef.current.playPlaceO();
 
         // Power Cell check
         const newPc = [...pc];
@@ -468,6 +539,7 @@ export default function GameRoom() {
           if (!aiSkill) {
             const skill = getRandomSkill();
             update[aiSkillKey] = skill;
+            soundsRef.current.playPowerCell();
             // Show power cell banner to human
             showBannerRef.current({
               type: 'info',
@@ -490,6 +562,7 @@ export default function GameRoom() {
           }
           const curse = buildCurse(curseType);
           update[aiCurseKey] = JSON.stringify(curse);
+          playCurseSound(curseType);
           showBannerRef.current({
             type: 'info',
             message: `AI got cursed! ${CURSE_META[curseType].name}`,
@@ -528,8 +601,13 @@ export default function GameRoom() {
           update.power_cells = JSON.stringify(s.power_cells);
           update.curse_cells = JSON.stringify(s.curse_cells);
           update.next_shuffle_at = effNsa + 12;
+          lastShuffleAtRef.current = update.next_shuffle_at;
+          setIsShuffling(true);
+          soundsRef.current.playShuffle();
+          setTimeout(() => setIsShuffling(false), 1200);
         }
 
+        setBoard(update.board_state || newBoard);
         await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
       } catch (err) {
         console.error('AI move failed:', err);
@@ -705,12 +783,15 @@ export default function GameRoom() {
         update.next_shuffle_at = effectiveNextShuffleAt + 12;
         lastShuffleAtRef.current = update.next_shuffle_at;
         setIsShuffling(true);
+        soundsRef.current.playShuffle();
+        emitGameSfx('board-shuffle');
         setTimeout(() => setIsShuffling(false), 1200);
       }
 
       setBoard(update.board_state || newBoard);
       setSkillTargetMode(false); setActiveSkillUse(null); setSkillTargetCells([]);
       playSkillSound(activeSkillUse);
+      emitGameSfx('skill-used', { skill: activeSkillUse });
       showToast({ type: 'success', title: `${SKILL_META[activeSkillUse].name} Used!`, message: SKILL_META[activeSkillUse].desc });
       await supabaseClient.from('game_rooms').update(update).eq('id', roomId);
     } catch {
@@ -739,6 +820,7 @@ export default function GameRoom() {
             targetCell = rnd;
             setFumbleWarning(true);
             soundsRef.current.playFumble();
+            emitGameSfx('fumble-triggered');
             setTimeout(() => setFumbleWarning(false), 1500);
           }
         }
@@ -748,6 +830,7 @@ export default function GameRoom() {
       newBoard[targetCell] = symbol;
       setBoard(newBoard);
       if (symbol === 'X') playPlaceX(); else playPlaceO();
+      emitGameSfx('move-placed', { symbol });
 
       // Build DB update
       const update: any = { board_state: newBoard, last_move_at: new Date().toISOString() };
@@ -765,6 +848,7 @@ export default function GameRoom() {
           update[mySkillKey] = skill;
           setNewSkillFlag(true); setTimeout(() => setNewSkillFlag(false), 2000);
           soundsRef.current.playPowerCell();
+          emitGameSfx('power-cell');
           showToast({ type: 'success', title: 'Power Cell Claimed!', message: `You got: ${SKILL_META[skill].name}` });
         } else {
           showToast({ type: 'warning', title: 'Power Cell', message: 'You already have a skill!' });
@@ -785,6 +869,7 @@ export default function GameRoom() {
         const curse = buildCurse(curseType);
         update[myCurseKey] = JSON.stringify(curse);
         playCurseSound(curseType);
+        emitGameSfx('curse-triggered', { curse: curseType });
         showBanner({ type: 'error', message: `CURSED! ${CURSE_META[curseType].name}: ${CURSE_META[curseType].desc}`, icon: <CurseIcon curse={curseType} size={22} />, duration: 3500 });
       }
 
@@ -827,6 +912,7 @@ export default function GameRoom() {
         lastShuffleAtRef.current = update.next_shuffle_at;
         setIsShuffling(true);
         soundsRef.current.playShuffle();
+        emitGameSfx('board-shuffle');
         setTimeout(() => setIsShuffling(false), 1200);
         showToast({ type: 'info', title: 'Board Shuffled!', message: 'All positions have been randomized!' });
       }
