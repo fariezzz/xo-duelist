@@ -9,6 +9,7 @@ import BackgroundMusic from '../components/BackgroundMusic';
 import PresenceHeartbeat from '../components/PresenceHeartbeat';
 import GlobalInviteListener from '../components/GlobalInviteListener';
 import ServiceUnavailable from '../components/ServiceUnavailable';
+import GlobalSessionEnforcer from '../components/GlobalSessionEnforcer';
 
 const rajdhani = Rajdhani({
   weight: ['500', '600', '700'],
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* App with notification system */}
         <NotificationProvider>
+          <GlobalSessionEnforcer />
           <PresenceHeartbeat />
           <GlobalInviteListener />
           {children}

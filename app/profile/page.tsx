@@ -56,7 +56,7 @@ export default function ProfilePage() {
     profile, loading, saving, error,
     usernameCheck, checkUsername,
     updateProfile, updateEmail, linkProvider, unlinkProvider, createPassword, updatePassword,
-    uploadAvatar, removeAvatar, deleteAccount,
+    uploadAvatar, removeAvatar, deleteAccount, sendPasswordSetupLink
   } = useProfile();
 
   const [isDirty, setIsDirty] = useState(false);
@@ -321,7 +321,10 @@ export default function ProfilePage() {
                   successMessage="Password created. You can sign in with email + password."
                 />
               ) : (
-                <ChangePasswordForm onSubmit={(current, newPassword) => updatePassword(current ?? "", newPassword)} />
+                <ChangePasswordForm 
+                  onSubmit={(current, newPassword) => updatePassword(current ?? "", newPassword)} 
+                  onForgotPassword={sendPasswordSetupLink}
+                />
               )}
 
               <DangerZone

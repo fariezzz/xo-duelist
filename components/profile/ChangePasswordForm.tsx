@@ -9,6 +9,7 @@ interface Props {
   successMessage?: string;
   submitLabel?: string;
   savingLabel?: string;
+  onForgotPassword?: () => Promise<{ success: boolean; error?: string }>;
 }
 
 function getStrength(pw: string): { level: "weak" | "medium" | "strong"; pct: number; color: string } {
@@ -26,6 +27,7 @@ export default function ChangePasswordForm({
     successMessage = "Password updated. Please log in again.",
   submitLabel = "Update Password",
   savingLabel = "Updating...",
+  onForgotPassword,
 }: Props) {
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -36,6 +38,8 @@ export default function ChangePasswordForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
 
   const strength = getStrength(newPw);
   const confirmMatch = confirmPw.length > 0 && newPw === confirmPw;
@@ -73,6 +77,23 @@ export default function ChangePasswordForm({
       setConfirmPw("");
     } else {
       setError(result.error ?? "Failed to update password");
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (!onForgotPassword) return;
+    setError(null);
+    setSuccess(false);
+    setResetSent(false);
+    setSendingReset(true);
+
+    const result = await onForgotPassword();
+    setSendingReset(false);
+
+    if (result.success) {
+      setResetSent(true);
+    } else {
+      setError(result.error ?? "Failed to send reset link");
     }
   }
 
@@ -151,9 +172,49 @@ export default function ChangePasswordForm({
         </div>
       )}
 
+      {resetSent && (
+        <div
+          style={{
+            color: "#38bdf8",
+            fontSize: "0.85rem",
+            fontFamily: "var(--font-heading)",
+            marginBottom: "16px",
+            padding: "10px",
+            borderRadius: "8px",
+            background: "rgba(56,189,248,0.1)",
+            border: "1px solid rgba(56,189,248,0.2)",
+          }}
+        >
+          Password reset link sent to your email.
+        </div>
+      )}
+
       {requireCurrentPassword && (
         <div style={{ marginBottom: "20px" }}>
-          <label style={labelStyle}>Current Password</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>Current Password</label>
+            {onForgotPassword && (
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={sendingReset}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: sendingReset ? 'var(--text-muted)' : '#a78bfa',
+                  fontSize: '0.75rem',
+                  fontFamily: 'var(--font-heading)',
+                  cursor: sendingReset ? 'wait' : 'pointer',
+                  padding: 0,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em'
+                }}
+              >
+                {sendingReset ? 'Sending...' : 'Forgot?'}
+              </button>
+            )}
+          </div>
           <div style={{ position: "relative" }}>
             <input
               className="input"

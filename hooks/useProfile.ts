@@ -557,7 +557,7 @@ export function useProfile() {
       }
 
       const redirectTo = getAuthRedirectUrl('/auth/callback');
-
+      
       const { error } = await supabaseClient.auth.resetPasswordForEmail(
         profile.email.trim().toLowerCase(),
         redirectTo ? { redirectTo } : undefined
@@ -609,6 +609,24 @@ export function useProfile() {
 
       if (normalized.includes('password') && normalized.includes('weak')) {
         return { success: false, error: 'Password is too weak. Use at least 8 characters with mixed types.' };
+      }
+
+      if (normalized.includes('different') && (normalized.includes('old') || normalized.includes('current'))) {
+        // This error PROVES the user already has a password set!
+        // We silently update the metadata so they see "Change Password" next time.
+        // We fetch the current user first to preserve existing metadata.
+        void supabaseClient.auth.getUser().then(({ data }) => {
+          if (data.user) {
+            void supabaseClient.auth.updateUser({
+              data: {
+                ...getExistingUserMetadata(data.user.user_metadata),
+                [PASSWORD_METADATA_KEY]: true,
+              }
+            });
+          }
+        });
+        setProfile(markProfileHasPassword);
+        return { success: false, error: 'You already have a password set, and it is the same as the one you entered. The page will update to let you change it.' };
       }
 
       return { success: false, error: message || 'Failed to set password' };

@@ -1,20 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseClient } from "../lib/supabase";
 
 const HEARTBEAT_MS = 4000;
 const LOCK_TTL_SECONDS = 15;
 const TAB_INSTANCE_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-type LockStatus = "loading" | "inactive" | "active" | "conflict" | "error";
+type LockStatus = "loading" | "inactive" | "active" | "conflict" | "error" | "deleted";
 
 type ClaimResult = {
   granted?: boolean;
 };
 
-export function useScopedSessionLock(scope: string) {
-  const holderId = useMemo(() => `${TAB_INSTANCE_ID}:${scope}`, [scope]);
+export interface ScopedSessionLockOptions {
+  forceOnInit?: boolean;
+  useBrowserId?: boolean;
+}
+
+export function useScopedSessionLock(scope: string, options?: ScopedSessionLockOptions) {
+  const { forceOnInit = false, useBrowserId = false } = options ?? {};
+
+  // useRef for holderId so it is computed once and stays stable across renders.
+  // useMemo is avoided here because localStorage reads on the server would throw.
+  const holderIdRef = useRef<string | null>(null);
+  if (holderIdRef.current === null) {
+    if (useBrowserId && typeof window !== 'undefined') {
+      let bId = localStorage.getItem('xo_browser_id');
+      if (!bId) {
+        bId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem('xo_browser_id', bId);
+      }
+      holderIdRef.current = `${bId}:${scope}`;
+    } else {
+      holderIdRef.current = `${TAB_INSTANCE_ID}:${scope}`;
+    }
+  }
+  const holderId = holderIdRef.current;
   const [userId, setUserId] = useState<string | null>(null);
   const [status, setStatus] = useState<LockStatus>("loading");
   const [isTakingOver, setIsTakingOver] = useState(false);
@@ -39,7 +61,13 @@ export function useScopedSessionLock(scope: string) {
       });
 
       if (error) {
-        setStatus("error");
+        // 23503 = foreign_key_violation. The only FK is user_id -> auth.users(id).
+        // If this happens, the user account was deleted from the database.
+        if (error.code === "23503" || error.message?.toLowerCase().includes("foreign key")) {
+          setStatus("deleted");
+        } else {
+          setStatus("error");
+        }
         return false;
       }
 
@@ -98,10 +126,12 @@ export function useScopedSessionLock(scope: string) {
     if (!userId) return;
 
     let cancelled = false;
+    let isFirstTick = true;
 
     const tick = async () => {
       if (cancelled) return;
-      await claimLock(false);
+      await claimLock(isFirstTick && forceOnInit);
+      isFirstTick = false;
     };
 
     void tick();

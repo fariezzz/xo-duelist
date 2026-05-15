@@ -13,9 +13,6 @@ function normalizeBaseUrl(rawUrl: string): string | null {
     if (LOCALHOST_HOSTS.has(parsed.hostname) && parsed.protocol !== 'http:') {
       parsed.protocol = 'http:';
     }
-    if (!parsed.pathname.endsWith('/')) {
-      parsed.pathname = `${parsed.pathname}/`;
-    }
     parsed.search = '';
     parsed.hash = '';
     return parsed.toString();

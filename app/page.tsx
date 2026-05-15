@@ -56,7 +56,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [rememberMe, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
@@ -86,6 +86,24 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('error') === 'auth_callback_failed') {
       showToast({ type: 'error', title: 'Login Failed', message: 'OAuth authentication failed. Please try again.' });
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    if (params.get('error') === 'session_conflict') {
+      showToast({
+        type: 'error',
+        title: 'Logged Out',
+        message: 'Your account was opened on another device. You have been logged out here.',
+      });
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    if (params.get('error') === 'account_deleted') {
+      showToast({
+        type: 'error',
+        title: 'Account Deleted',
+        message: 'This account has been deleted. You have been logged out.',
+      });
       window.history.replaceState({}, '', '/');
       return;
     }
@@ -119,6 +137,21 @@ export default function Home() {
     if (supabaseHealth !== 'available') return;
     setLoading(true);
     setRememberMe(rememberMe);
+
+    if (mode === 'forgot') {
+      const redirectTo = getAuthRedirectUrl('/auth/callback');
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectTo ? redirectTo : undefined,
+      });
+      if (error) {
+        showToast({ type: 'error', title: 'Reset Failed', message: error.message });
+      } else {
+        showToast({ type: 'success', title: 'Email Sent', message: 'Check your email for the password reset link.' });
+        setMode('login');
+      }
+      setLoading(false);
+      return;
+    }
 
     if (mode === 'register') {
       const emailRedirectTo = getAuthRedirectUrl('/auth/callback');
@@ -342,39 +375,61 @@ export default function Home() {
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <div style={{ position: 'relative' }}>
-            <input
-              className="input"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{ paddingRight: '44px' }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((value) => !value)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              title={showPassword ? 'Hide password' : 'Show password'}
-              style={{
-                position: 'absolute',
-                right: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '4px',
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-              }}
-            >
-              {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
-            </button>
-          </div>
+          {mode !== 'forgot' && (
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{ paddingRight: '44px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+              </button>
+            </div>
+          )}
+
+          {mode === 'login' && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-6px' }}>
+              <button
+                type="button"
+                onClick={() => setMode('forgot')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#a78bfa',
+                  fontSize: '0.85rem',
+                  fontFamily: 'var(--font-heading)',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                Forgot Password?
+              </button>
+            </div>
+          )}
 
           {/* Remember Me */}
           {mode === 'login' && (
@@ -427,7 +482,7 @@ export default function Home() {
 
           <button
             type="submit"
-            className={`btn btn-lg ${mode === 'login' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-lg ${mode === 'login' ? 'btn-primary' : mode === 'forgot' ? 'btn-primary' : 'btn-secondary'}`}
             disabled={loading || !!oauthLoading}
             style={{ width: '100%', marginTop: '8px' }}
           >
@@ -436,6 +491,8 @@ export default function Home() {
                 <span className="animate-spin-slow" style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%' }} />
                 Processing...
               </span>
+            ) : mode === 'forgot' ? (
+              <>✉️ Send Reset Link</>
             ) : mode === 'login' ? (
               <>⚔️ Enter Arena</>
             ) : (
