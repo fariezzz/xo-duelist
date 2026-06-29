@@ -442,7 +442,7 @@ export default function ServiceUnavailable() {
               animation: "svc-dot-blink 2s ease-in-out infinite",
             }}
           />
-          Auto-retrying every 30 seconds
+          Auto-retrying every 15 seconds
         </div>
           </>
         )}

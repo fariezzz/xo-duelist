@@ -9,11 +9,10 @@ const POLL_INTERVAL_MS = 15_000; // 15 seconds
 const PING_TIMEOUT_MS = 8_000; // 8 seconds
 
 /**
- * Ping the Supabase REST API once to determine availability.
+ * Ping the same-origin health route once to determine Supabase availability.
  *
- * Returns "available" if the server is reachable (non-5xx),
- * "unavailable" if the server returns 5xx (paused / maintenance),
- * or "checking" if the request fails before receiving a response.
+ * The route checks Supabase from the server so paused projects cannot hide
+ * their 5xx/540 response behind browser CORS failures.
  */
 export async function pingSupabase(): Promise<SupabaseHealthStatus> {
   // If the browser reports no network, don't treat it as server-down.
@@ -22,34 +21,33 @@ export async function pingSupabase(): Promise<SupabaseHealthStatus> {
     return "checking";
   }
 
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!base || !anonKey) return "checking";
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${base}/rest/v1/`, {
+    const res = await fetch("/api/supabase-health", {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,
       headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
+        Accept: "application/json",
       },
     });
     clearTimeout(timeoutId);
 
-    // Only a real 5xx response means Supabase reached us but is unavailable.
-    // Other statuses still prove the service is reachable.
-    return res.status >= 500 ? "unavailable" : "available";
+    if (res.status >= 500) {
+      return "unavailable";
+    }
+
+    const payload = (await res.json().catch(() => null)) as { status?: unknown } | null;
+    return payload?.status === "available" || payload?.status === "unavailable"
+      ? payload.status
+      : "checking";
   } catch {
     clearTimeout(timeoutId);
-    // Network errors, browser offline transitions, DNS failures, and timeouts
-    // do not prove Supabase returned a 5xx response. Let reconnecting UX handle it.
-    return "checking";
+    return typeof navigator !== "undefined" && !navigator.onLine
+      ? "checking"
+      : "unavailable";
   }
 }
 
